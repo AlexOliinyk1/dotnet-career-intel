@@ -42,11 +42,10 @@ public sealed class RemoteOkScraper(HttpClient httpClient, ILogger<RemoteOkScrap
         {
             await Task.Delay(RequestDelay, cancellationToken);
 
-            // RemoteOK requires Accept: application/json header
+            // RemoteOK requires proper headers to return JSON
             var request = new HttpRequestMessage(HttpMethod.Get, ApiUrl);
-            request.Headers.Accept.Clear();
-            request.Headers.Accept.Add(
-                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            request.Headers.Add("Accept", "application/json, text/plain, */*");
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
             var response = await httpClient.SendAsync(request, cancellationToken);
 
@@ -56,13 +55,34 @@ public sealed class RemoteOkScraper(HttpClient httpClient, ILogger<RemoteOkScrap
                 return [];
             }
 
-            // The API returns a JSON array where the first element is metadata (legal notice).
-            // We deserialize as JsonElement[] to skip the first element safely.
-            var rawArray = await response.Content
-                .ReadFromJsonAsync<JsonElement[]>(JsonOptions, cancellationToken);
+            // The API response format might have changed - let's read as text first
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(responseText))
+            {
+                logger.LogWarning("[RemoteOK] Empty response from API");
+                return [];
+            }
+
+            // Try to parse as array (original format)
+            JsonElement[]? rawArray = null;
+            try
+            {
+                rawArray = JsonSerializer.Deserialize<JsonElement[]>(responseText, JsonOptions);
+            }
+            catch (JsonException)
+            {
+                logger.LogWarning("[RemoteOK] Response is not a JSON array - API format may have changed");
+                return [];
+            }
 
             if (rawArray is null or { Length: 0 })
+            {
+                logger.LogWarning("[RemoteOK] Empty array response");
                 return [];
+            }
+
+            logger.LogDebug("[RemoteOK] Received {Count} elements in response array", rawArray.Length);
 
             // Skip the first element (metadata), then deserialize each remaining element as a job
             var jobs = new List<RemoteOkJob>();
@@ -80,14 +100,25 @@ public sealed class RemoteOkScraper(HttpClient httpClient, ILogger<RemoteOkScrap
                 }
             }
 
-            if (jobs.Count == 0) return [];
+            if (jobs.Count == 0)
+            {
+                logger.LogWarning("[RemoteOK] No jobs deserialized from API response");
+                return [];
+            }
+
+            logger.LogDebug("[RemoteOK] Fetched {TotalJobs} total jobs", jobs.Count);
 
             // Filter to .NET-relevant jobs and limit results based on maxPages (25 per page)
-            return jobs
+            var filtered = jobs
                 .Where(IsNetRelated)
                 .Take(maxPages * 25)
                 .Select(MapToVacancy)
                 .ToList();
+
+            logger.LogInformation("[RemoteOK] Found {Count} .NET-relevant vacancies out of {Total} total",
+                filtered.Count, jobs.Count);
+
+            return filtered;
         }
         catch (HttpRequestException ex)
         {
