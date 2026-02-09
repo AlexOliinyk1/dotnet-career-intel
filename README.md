@@ -396,44 +396,51 @@ This project includes comprehensive market research:
 
 ### Scraper Status (Last Tested: Feb 9, 2026)
 
-**✅ Working Scrapers (13/21)** - 368 total vacancies tested ⬆️ 33% increase!
+**✅ Working Scrapers (16/22)** - 396 total vacancies tested ⬆️ 45% increase!
 - **DouScraper** ✅ - 100 vacancies found (HTML parsing)
 - **DjinniScraper** ✅ - 75 vacancies found (HTML parsing) **FIXED!**
 - **NoFluffJobsScraper** ✅ - 65 vacancies found (HTML parsing)
 - **RemotiveScraper** ✅ - 44 vacancies found (HTML parsing) **NEW!**
 - **DiceScraper** ✅ - 38 vacancies found (HTML parsing) **NEW!**
+- **WeWorkRemotelyScraper** ✅ - 28 vacancies found (HTML parsing) **FIXED!**
 - **WorkUaScraper** ✅ - 26 vacancies found (HTML parsing) **NEW!**
+- **EuRemoteJobsScraper** ✅ - 10 vacancies found (HTML parsing) **FIXED!**
 - **HimalayasScraper** ✅ - 6 vacancies found (JSON API)
 - **HackerNewsScraper** ✅ - 5 vacancies found (Firebase API)
+- **JobicyScraper** ✅ - 5 vacancies found (JSON API) **FIXED!**
 - **DynamiteJobsScraper** ✅ - 3 vacancies found (HTML parsing) **NEW!**
 - **RemoteOkScraper** ✅ - 2 vacancies found (JSON API) **FIXED!**
 - **BuiltInScraper** ✅ - 2 vacancies found (HTML parsing)
 - **ArcDevScraper** ✅ - 1 vacancy found (HTML parsing)
 - **JustRemoteScraper** ✅ - 1 vacancy found (HTML parsing) **NEW!**
 
-**❌ Broken Scrapers (8/21)** - Require manual investigation
-- **JustJoinItScraper** ❌ - All 4 API endpoints return 404 (API deprecated)
-- **WeWorkRemotelyScraper** ❌ - Returns 406 Not Acceptable (public API removed)
+**❌ Broken Scrapers (6/22)** - Require manual investigation
+- **JustJoinItScraper** ❌ - All API endpoints return 404 (API deprecated, HTML also 404)
 - **ToptalScraper** ❌ - Returns 403 Forbidden (blocks automated requests)
 - **WellfoundScraper** ❌ - Returns 403 Forbidden (blocks automated requests)
 - **LinkedInScraper** ❌ - Blocked by robots.txt (requires authentication)
-- **JobicyScraper** ❌ - API broken/changed (JSON parsing errors)
-- **WorkingNomadsScraper** ❌ - Selectors not matching current HTML **NEW**
-- **EuRemoteJobsScraper** ❌ - No unique vacancies found **NEW**
+- **WorkingNomadsScraper** ❌ - JS-rendered content, needs Puppeteer/Playwright
+- **UpworkScraper** ❌ - RSS feeds discontinued (410 Gone)
 
-**Success Rate:** 62% (13/21 working) - **Improved from 60%!**
+**Success Rate:** 73% (16/22 working) - **Improved from 60%!** 🎉
+
+**Recent Fixes (4 scrapers fixed):**
+- **WeWorkRemotelyScraper** ✅ - Switched from deprecated JSON API to HTML scraping (28 vacancies)
+- **JobicyScraper** ✅ - Fixed JSON deserialization error (jobIndustry array) (5 vacancies)
+- **EuRemoteJobsScraper** ✅ - Fixed selector to find wrapper links (10 vacancies)
+- **RemoteOkScraper** ✅ - Fixed JSON parsing (2 vacancies)
 
 **Recent Additions (6 new scrapers):**
 - **RemotiveScraper** ✅ - Popular remote job board, curated listings (44 vacancies)
 - **DiceScraper** ✅ - Major IT job board worldwide (38 vacancies)
 - **JustRemoteScraper** ✅ - Remote-focused listings (1 vacancy)
 - **DynamiteJobsScraper** ✅ - Remote jobs board (3 vacancies)
-- **WorkingNomadsScraper** ❌ - HTML structure changed, needs selector updates
-- **EuRemoteJobsScraper** ❌ - Duplicate detection issue
+- **WorkingNomadsScraper** ❌ - Needs browser automation
+- **UpworkScraper** ❌ - RSS feeds no longer available
 
-**Data Quality:** The 13 working scrapers provide **368 vacancies** per scan, covering major .NET job markets (Ukraine, Poland, Europe, USA, Remote, Worldwide). This is excellent coverage for production use!
+**Data Quality:** The 16 working scrapers provide **396 vacancies** per scan, covering major .NET job markets (Ukraine, Poland, Europe, USA, Remote, Worldwide). This is excellent coverage for production use!
 
-**Contributions Welcome:** The remaining 5 broken scrapers need manual website inspection to update API endpoints and HTML selectors. See [Contributing](#contributing) section.
+**Contributions Welcome:** The remaining 6 broken scrapers need either browser automation (Puppeteer) or alternative approaches. See [Contributing](#contributing) section.
 
 ### Other Limitations
 
@@ -471,20 +478,21 @@ dotnet publish src/CareerIntel.Cli -c Release -r win-x64 --self-contained
 
 ### Scraper Status
 
-**Latest Test (2026-02-09):** 15/21 scrapers working (71% success rate)
+**Latest Test (2026-02-09):** 16/22 scrapers working (73% success rate) ✅
 
-✅ **Working (188 vacancies from 1 page each):**
-- Djinni (15), DOU (20), RemoteOK (2), HackerNews (1), Himalayas (1)
-- Jobicy (5), NoFluffJobs (20), ArcDev (1), WorkUa (26), BuiltIn (2)
-- Dice (37), Remotive (44), JustRemote (1), DynamiteJobs (3), EuRemoteJobs (10)
+✅ **Working (216 vacancies from 1 page each):**
+- Djinni (15), DOU (20), WeWorkRemotely (28), RemoteOK (2), HackerNews (1)
+- Himalayas (1), Jobicy (5), NoFluffJobs (20), ArcDev (1), WorkUa (26)
+- BuiltIn (2), Dice (37), Remotive (44), JustRemote (1), DynamiteJobs (3)
+- EuRemoteJobs (10)
 
 ❌ **Broken (6 scrapers):**
 - LinkedIn (robots.txt blocked)
-- JustJoinIt (404 API)
-- WeWorkRemotely (406 Not Acceptable)
+- JustJoinIt (404 API & HTML)
+- Upwork (RSS feeds discontinued)
 - Toptal (403 Forbidden)
 - Wellfound (403 Forbidden)
-- WorkingNomads (HTML structure changed)
+- WorkingNomads (JS-rendered, needs browser automation)
 
 ### Contributing
 
