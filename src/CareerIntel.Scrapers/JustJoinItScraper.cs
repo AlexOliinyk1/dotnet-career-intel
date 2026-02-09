@@ -14,8 +14,14 @@ namespace CareerIntel.Scrapers;
 public sealed class JustJoinItScraper(HttpClient httpClient, ILogger<JustJoinItScraper> logger, ScrapingCompliance? compliance = null)
     : BaseScraper(httpClient, logger, compliance)
 {
-    // Updated API endpoint - JustJoin.it changed their API structure
-    private const string ApiUrl = "https://api.justjoin.it/v2/user-panel/offers";
+    // JustJoin.it API endpoints to try (they change frequently)
+    private static readonly string[] ApiEndpoints =
+    [
+        "https://justjoin.it/api/offers",
+        "https://api.justjoin.it/v2/offers",
+        "https://api.justjoin.it/offers",
+        "https://api.justjoin.it/v2/user-panel/offers"
+    ];
     private const string WebUrl = "https://justjoin.it/offers";
 
     public override string PlatformName => "JustJoinIt";
@@ -33,37 +39,60 @@ public sealed class JustJoinItScraper(HttpClient httpClient, ILogger<JustJoinItS
         int maxPages = 5,
         CancellationToken cancellationToken = default)
     {
-        try
+        // Try multiple API endpoints until one works
+        foreach (var apiEndpoint in ApiEndpoints)
         {
-            await Task.Delay(RequestDelay, cancellationToken);
-
-            // TODO: Verify API endpoint still works — JustJoin.it may change API structure.
-            var response = await httpClient.GetAsync(
-                $"{ApiUrl}?keyword={Uri.EscapeDataString(keywords)}", cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            try
             {
-                logger.LogWarning("[JustJoinIt] API returned {StatusCode}", response.StatusCode);
-                return [];
+                await Task.Delay(RequestDelay, cancellationToken);
+
+                logger.LogDebug("[JustJoinIt] Trying API endpoint: {Endpoint}", apiEndpoint);
+
+                var response = await httpClient.GetAsync(apiEndpoint, cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    logger.LogDebug("[JustJoinIt] Endpoint {Endpoint} returned {StatusCode}, trying next...",
+                        apiEndpoint, response.StatusCode);
+                    continue;
+                }
+
+                var offers = await response.Content
+                    .ReadFromJsonAsync<List<JustJoinOffer>>(JsonOptions, cancellationToken);
+
+                if (offers is null or { Count: 0 })
+                {
+                    logger.LogDebug("[JustJoinIt] Endpoint {Endpoint} returned no offers, trying next...", apiEndpoint);
+                    continue;
+                }
+
+                logger.LogInformation("[JustJoinIt] Successfully fetched {Count} offers from {Endpoint}",
+                    offers.Count, apiEndpoint);
+
+                // Filter to .NET-relevant offers and limit to maxPages * 25
+                var netOffers = offers
+                    .Where(o => IsNetRelated(o))
+                    .Take(maxPages * 25)
+                    .Select(MapToVacancy)
+                    .ToList();
+
+                logger.LogInformation("[JustJoinIt] Filtered to {Count} .NET-relevant offers", netOffers.Count);
+                return netOffers;
             }
-
-            var offers = await response.Content
-                .ReadFromJsonAsync<List<JustJoinOffer>>(JsonOptions, cancellationToken);
-
-            if (offers is null or { Count: 0 }) return [];
-
-            // Filter to .NET-relevant offers and limit to maxPages * 25
-            return offers
-                .Where(o => IsNetRelated(o))
-                .Take(maxPages * 25)
-                .Select(MapToVacancy)
-                .ToList();
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "[JustJoinIt] JSON parsing failed for {Endpoint}, trying next...", apiEndpoint);
+                continue;
+            }
+            catch (HttpRequestException ex)
+            {
+                logger.LogWarning(ex, "[JustJoinIt] Request failed for {Endpoint}, trying next...", apiEndpoint);
+                continue;
+            }
         }
-        catch (HttpRequestException ex)
-        {
-            logger.LogError(ex, "[JustJoinIt] API request failed");
-            return [];
-        }
+
+        logger.LogError("[JustJoinIt] All API endpoints failed");
+        return [];
     }
 
     public override async Task<JobVacancy?> ScrapeDetailAsync(
@@ -77,14 +106,29 @@ public sealed class JustJoinItScraper(HttpClient httpClient, ILogger<JustJoinItS
 
             await Task.Delay(RequestDelay, cancellationToken);
 
-            var offer = await httpClient.GetFromJsonAsync<JustJoinOfferDetail>(
-                $"{ApiUrl}/{slug}", JsonOptions, cancellationToken);
+            // Try multiple API endpoints for detail page
+            foreach (var apiEndpoint in ApiEndpoints)
+            {
+                try
+                {
+                    var offer = await httpClient.GetFromJsonAsync<JustJoinOfferDetail>(
+                        $"{apiEndpoint}/{slug}", JsonOptions, cancellationToken);
 
-            if (offer is null) return null;
+                    if (offer is not null)
+                    {
+                        var vacancy = MapToVacancy(offer);
+                        vacancy.Description = offer.Body ?? string.Empty;
+                        return vacancy;
+                    }
+                }
+                catch
+                {
+                    // Try next endpoint
+                    continue;
+                }
+            }
 
-            var vacancy = MapToVacancy(offer);
-            vacancy.Description = offer.Body ?? string.Empty;
-            return vacancy;
+            return null;
         }
         catch (Exception ex)
         {

@@ -72,23 +72,27 @@ public sealed class ToptalScraper(HttpClient httpClient, ILogger<ToptalScraper> 
                 continue;
             }
 
+            // Try multiple selector strategies
             var jobCards = SelectNodes(document,
                 "//div[contains(@class, 'job') or contains(@class, 'freelance')]//a[contains(@href, '/freelance-jobs/')]")
                 ?? SelectNodes(document,
-                "//a[contains(@href, '/freelance-jobs/') and not(contains(@href, '/developers/'))]");
+                "//a[contains(@href, '/freelance-jobs/') and not(contains(@href, '/developers/'))]")
+                ?? SelectNodes(document,
+                "//li[contains(@class, 'job')]//a | //div[contains(@class, 'card')]//a[contains(@href, '/freelance')]")
+                ?? SelectNodes(document,
+                "//article//a[contains(@href, '/freelance-jobs/')]")
+                ?? SelectNodes(document,
+                "//a[contains(@href, '/freelance-jobs/')]");
 
             if (jobCards is null or { Count: 0 })
             {
-                // Fallback: try broader selection for any link pointing to a job detail page
-                jobCards = SelectNodes(document,
-                    "//a[contains(@href, '/freelance-jobs/') and not(contains(@href, '/developers/dot-net')) and not(contains(@href, '/developers/c-sharp'))]");
-            }
-
-            if (jobCards is null or { Count: 0 })
-            {
-                logger.LogWarning("[Toptal] No job cards found on listing page: {Url}", listingUrl);
+                logger.LogWarning("[Toptal] No job cards found on listing page: {Url}. Page structure may have changed.", listingUrl);
+                logger.LogDebug("[Toptal] All links found: {LinkCount}",
+                    document.DocumentNode.SelectNodes("//a[@href]")?.Count ?? 0);
                 continue;
             }
+
+            logger.LogInformation("[Toptal] Found {Count} potential job links", jobCards.Count);
 
             foreach (var card in jobCards)
             {

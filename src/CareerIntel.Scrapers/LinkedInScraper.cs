@@ -29,25 +29,43 @@ public sealed class LinkedInScraper(HttpClient httpClient, ILogger<LinkedInScrap
     {
         var vacancies = new List<JobVacancy>();
 
+        logger.LogInformation("[LinkedIn] Starting scrape for keywords: {Keywords}", keywords);
+
         for (var page = 0; page < maxPages; page++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var url = BuildSearchUrl(keywords, page * 25);
+            logger.LogDebug("[LinkedIn] Fetching page {Page}: {Url}", page + 1, url);
+
             var document = await FetchPageAsync(url, cancellationToken);
 
-            if (document is null) break;
+            if (document is null)
+            {
+                logger.LogWarning("[LinkedIn] Failed to fetch page {Page}", page + 1);
+                break;
+            }
 
             // Detect auth wall
             if (IsAuthWall(document))
             {
-                logger.LogWarning("[LinkedIn] Auth wall detected — cannot scrape further without login");
+                logger.LogWarning("[LinkedIn] Auth wall detected on page {Page}. LinkedIn requires login for job search. Cannot scrape further without authentication.", page + 1);
                 break;
             }
 
-            // TODO: Verify selectors against live LinkedIn guest job search page.
-            var jobCards = SelectNodes(document, "//div[contains(@class, 'base-card')]");
-            if (jobCards is null or { Count: 0 }) break;
+            // Try multiple selector patterns as LinkedIn changes HTML structure frequently
+            var jobCards = SelectNodes(document, "//div[contains(@class, 'base-card')]")
+                ?? SelectNodes(document, "//li[contains(@class, 'jobs-search__results-list')]//div")
+                ?? SelectNodes(document, "//div[contains(@class, 'job-search-card')]")
+                ?? SelectNodes(document, "//li[contains(@class, 'result-card')]");
+
+            if (jobCards is null or { Count: 0 })
+            {
+                logger.LogWarning("[LinkedIn] No job cards found on page {Page}. HTML selectors may need updating.", page + 1);
+                break;
+            }
+
+            logger.LogDebug("[LinkedIn] Found {Count} job cards on page {Page}", jobCards.Count, page + 1);
 
             foreach (var card in jobCards)
             {
@@ -57,6 +75,7 @@ public sealed class LinkedInScraper(HttpClient httpClient, ILogger<LinkedInScrap
             }
         }
 
+        logger.LogInformation("[LinkedIn] Scrape completed. Found {Count} vacancies total", vacancies.Count);
         return vacancies;
     }
 

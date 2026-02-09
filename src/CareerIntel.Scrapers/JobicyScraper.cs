@@ -125,16 +125,20 @@ public sealed class JobicyScraper(HttpClient httpClient, ILogger<JobicyScraper> 
                     continue;
                 }
 
+                logger.LogInformation("[Jobicy] API returned {Count} jobs for tag {Tag}", apiResponse.Jobs.Count, tag);
+
                 // Merge and deduplicate by job ID
                 foreach (var job in apiResponse.Jobs)
                 {
                     if (job.Id > 0 && !allJobs.ContainsKey(job.Id))
                     {
                         allJobs[job.Id] = job;
+                        logger.LogDebug("[Jobicy] Added job {Id}: {Title} at {Company}",
+                            job.Id, job.JobTitle ?? "N/A", job.CompanyName ?? "N/A");
                     }
                 }
 
-                logger.LogDebug("[Jobicy] Fetched {Count} jobs for tag {Tag}, total unique: {Total}",
+                logger.LogInformation("[Jobicy] Fetched {Count} jobs for tag {Tag}, total unique: {Total}",
                     apiResponse.Jobs.Count, tag, allJobs.Count);
             }
             catch (HttpRequestException ex)
@@ -143,11 +147,29 @@ public sealed class JobicyScraper(HttpClient httpClient, ILogger<JobicyScraper> 
             }
         }
 
-        if (allJobs.Count == 0) return [];
+        if (allJobs.Count == 0)
+        {
+            logger.LogWarning("[Jobicy] No jobs found after fetching all tags");
+            return [];
+        }
+
+        logger.LogInformation("[Jobicy] Total unique jobs before filtering: {Count}", allJobs.Count);
 
         // Filter for .NET relevance and limit to maxResults
-        return allJobs.Values
-            .Where(IsNetRelated)
+        var netRelatedJobs = allJobs.Values.Where(IsNetRelated).ToList();
+        logger.LogInformation("[Jobicy] Jobs after .NET relevance filtering: {Count}", netRelatedJobs.Count);
+
+        if (netRelatedJobs.Count == 0)
+        {
+            logger.LogWarning("[Jobicy] No jobs passed .NET relevance filter. Returning all jobs from tag search.");
+            // Since we're already searching for .NET-specific tags, trust the API filtering
+            return allJobs.Values
+                .Take(maxResults)
+                .Select(MapToVacancy)
+                .ToList();
+        }
+
+        return netRelatedJobs
             .Take(maxResults)
             .Select(MapToVacancy)
             .ToList();

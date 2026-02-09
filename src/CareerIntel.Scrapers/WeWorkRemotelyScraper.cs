@@ -77,33 +77,63 @@ public sealed class WeWorkRemotelyScraper(HttpClient httpClient, ILogger<WeWorkR
         {
             await Task.Delay(RequestDelay, cancellationToken);
 
-            // Add required headers - server returns 406 without them
+            logger.LogDebug("[WeWorkRemotely] Fetching from: {Url}", apiUrl);
+
+            // Add comprehensive headers to avoid 406 Not Acceptable
             using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-            request.Headers.Add("Accept", "application/json");
-            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            request.Headers.Add("Accept", "application/json, text/html, */*");
+            request.Headers.Add("Accept-Language", "en-US,en;q=0.9");
+            request.Headers.Add("Accept-Encoding", "gzip, deflate, br");
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36");
+            request.Headers.Add("Referer", "https://weworkremotely.com/");
+            request.Headers.Add("DNT", "1");
+            request.Headers.Add("Connection", "keep-alive");
+            request.Headers.Add("Upgrade-Insecure-Requests", "1");
 
             var response = await httpClient.SendAsync(request, cancellationToken);
 
+            logger.LogInformation("[WeWorkRemotely] Response status: {StatusCode}, ContentType: {ContentType}",
+                response.StatusCode, response.Content.Headers.ContentType?.MediaType ?? "unknown");
+
             if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning("[WeWorkRemotely] API returned {StatusCode} for {Url}",
+                logger.LogWarning("[WeWorkRemotely] API returned {StatusCode} for {Url}. The JSON API may no longer be publicly accessible.",
                     response.StatusCode, apiUrl);
                 return [];
             }
 
-            var result = await response.Content
-                .ReadFromJsonAsync<WwrApiResponse>(JsonOptions, cancellationToken);
+            // Read response as string first to inspect format
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            return result?.Jobs ?? [];
+            if (string.IsNullOrWhiteSpace(responseText))
+            {
+                logger.LogWarning("[WeWorkRemotely] Empty response from {Url}", apiUrl);
+                return [];
+            }
+
+            logger.LogDebug("[WeWorkRemotely] Response length: {Length} bytes", responseText.Length);
+
+            var result = JsonSerializer.Deserialize<WwrApiResponse>(responseText, JsonOptions);
+
+            if (result?.Jobs is null or { Count: 0 })
+            {
+                logger.LogWarning("[WeWorkRemotely] No jobs found in response from {Url}", apiUrl);
+                return [];
+            }
+
+            logger.LogInformation("[WeWorkRemotely] Successfully fetched {Count} jobs from {Url}",
+                result.Jobs.Count, apiUrl);
+
+            return result.Jobs;
         }
         catch (HttpRequestException ex)
         {
-            logger.LogError(ex, "[WeWorkRemotely] API request failed for {Url}", apiUrl);
+            logger.LogError(ex, "[WeWorkRemotely] HTTP request failed for {Url}. The site may be blocking automated requests or the API endpoint may have changed.", apiUrl);
             return [];
         }
         catch (JsonException ex)
         {
-            logger.LogError(ex, "[WeWorkRemotely] Failed to deserialize response from {Url}", apiUrl);
+            logger.LogError(ex, "[WeWorkRemotely] JSON parsing failed for {Url}. The API format may have changed or the endpoint may now return HTML instead of JSON.", apiUrl);
             return [];
         }
     }
