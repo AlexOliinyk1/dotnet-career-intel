@@ -469,6 +469,23 @@ dotnet publish src/CareerIntel.Cli -c Release -r win-x64 --self-contained
 - **149 Source Files** - Well-organized, documented code
 - **Clean Architecture** - Domain-driven design with clear separation
 
+### Scraper Status
+
+**Latest Test (2026-02-09):** 15/21 scrapers working (71% success rate)
+
+✅ **Working (188 vacancies from 1 page each):**
+- Djinni (15), DOU (20), RemoteOK (2), HackerNews (1), Himalayas (1)
+- Jobicy (5), NoFluffJobs (20), ArcDev (1), WorkUa (26), BuiltIn (2)
+- Dice (37), Remotive (44), JustRemote (1), DynamiteJobs (3), EuRemoteJobs (10)
+
+❌ **Broken (6 scrapers):**
+- LinkedIn (robots.txt blocked)
+- JustJoinIt (404 API)
+- WeWorkRemotely (406 Not Acceptable)
+- Toptal (403 Forbidden)
+- Wellfound (403 Forbidden)
+- WorkingNomads (HTML structure changed)
+
 ### Contributing
 
 Contributions welcome! Areas needing help:
