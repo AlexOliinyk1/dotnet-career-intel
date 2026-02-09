@@ -14,13 +14,17 @@ namespace CareerIntel.Scrapers;
 public sealed class DjinniScraper : BaseScraper
 {
     private const string BaseUrl = "https://djinni.co";
+    private readonly ILogger<DjinniScraper> _logger;
 
     public override string PlatformName => "Djinni";
 
     protected override TimeSpan RequestDelay => TimeSpan.FromSeconds(3);
 
     public DjinniScraper(HttpClient httpClient, ILogger<DjinniScraper> logger, ScrapingCompliance? compliance = null)
-        : base(httpClient, logger, compliance) { }
+        : base(httpClient, logger, compliance)
+    {
+        _logger = logger;
+    }
 
     public override async Task<IReadOnlyList<JobVacancy>> ScrapeAsync(
         string keywords = ".NET",
@@ -38,13 +42,25 @@ public sealed class DjinniScraper : BaseScraper
 
             if (document is null) break;
 
-            var jobCards = SelectNodes(document,
-                "//li[contains(@class, 'list-jobs__item')]");
+            // Try multiple selector patterns - Djinni may have changed their HTML structure
+            var jobCards = SelectNodes(document, "//li[contains(@class, 'list-jobs__item')]");
 
-            // TODO: Verify actual CSS class names by inspecting live djinni.co/jobs page.
-            // The selectors below are based on known page structure and may need updating.
+            if (jobCards is null || jobCards.Count == 0)
+            {
+                // Try alternative selector patterns
+                jobCards = SelectNodes(document, "//li[contains(@class, 'job-item')]") ??
+                          SelectNodes(document, "//div[contains(@class, 'job-list-item')]") ??
+                          SelectNodes(document, "//article[contains(@class, 'job')]") ??
+                          SelectNodes(document, "//li[contains(@class, 'list-item')]");
+            }
 
-            if (jobCards is null || jobCards.Count == 0) break;
+            if (jobCards is null || jobCards.Count == 0)
+            {
+                _logger.LogWarning("[Djinni] No job cards found on page {Page} - selectors may need updating", page);
+                break;
+            }
+
+            _logger.LogDebug("[Djinni] Found {Count} job cards on page {Page}", jobCards.Count, page);
 
             foreach (var card in jobCards)
             {
@@ -80,14 +96,26 @@ public sealed class DjinniScraper : BaseScraper
     {
         try
         {
-            // TODO: Update XPath selectors based on actual djinni.co HTML structure.
-            var titleNode = card.SelectSingleNode(".//a[contains(@class, 'profile')]");
-            var companyNode = card.SelectSingleNode(".//a[contains(@class, 'company')]");
-            var salaryNode = card.SelectSingleNode(".//*[contains(@class, 'public-salary')]");
+            // Try multiple selector patterns for title link
+            var titleNode = card.SelectSingleNode(".//a[contains(@class, 'profile')]") ??
+                           card.SelectSingleNode(".//a[contains(@href, '/jobs/')]") ??
+                           card.SelectSingleNode(".//h2/a") ??
+                           card.SelectSingleNode(".//h3/a") ??
+                           card.SelectSingleNode(".//a[contains(@class, 'job-title')]") ??
+                           card.SelectSingleNode(".//a[1]"); // Fallback to first link
+
+            var companyNode = card.SelectSingleNode(".//a[contains(@class, 'company')]") ??
+                             card.SelectSingleNode(".//*[contains(@class, 'company-name')]");
+            var salaryNode = card.SelectSingleNode(".//*[contains(@class, 'public-salary')]") ??
+                            card.SelectSingleNode(".//*[contains(@class, 'salary')]");
             var locationNode = card.SelectSingleNode(".//*[contains(@class, 'location')]");
             var detailUrl = ExtractAttribute(titleNode, "href");
 
-            if (string.IsNullOrEmpty(detailUrl)) return null;
+            if (string.IsNullOrEmpty(detailUrl))
+            {
+                _logger.LogDebug("[Djinni] Job card has no valid link, skipping");
+                return null;
+            }
 
             var fullUrl = detailUrl.StartsWith("http") ? detailUrl : $"{BaseUrl}{detailUrl}";
             var idMatch = Regex.Match(detailUrl, @"/jobs/(\d+)");
