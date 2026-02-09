@@ -1,0 +1,590 @@
+[
+  {
+    "name": "C#",
+    "aliases": ["csharp", "c sharp", "c-sharp", "c#.net", "c# programming"],
+    "category": "CoreDotNet",
+    "weight": 10
+  },
+  {
+    "name": ".NET",
+    "aliases": ["dotnet", ".net core", "dotnet core", ".net framework", ".net 6", ".net 7", ".net 8", ".net 9", "dotnet 8", "dotnet 9", "net8", "net9"],
+    "category": "CoreDotNet",
+    "weight": 10
+  },
+  {
+    "name": "ASP.NET Core",
+    "aliases": ["asp.net", "aspnet", "aspnet core", "asp.net core mvc", "asp.net mvc", "aspnetcore", "asp.net web api", "asp.net core web api"],
+    "category": "CoreDotNet",
+    "weight": 9
+  },
+  {
+    "name": "Entity Framework Core",
+    "aliases": ["ef core", "efcore", "entity framework", "ef", "entityframework", "entity-framework-core"],
+    "category": "CoreDotNet",
+    "weight": 8
+  },
+  {
+    "name": "Blazor",
+    "aliases": ["blazor server", "blazor wasm", "blazor webassembly", "blazor hybrid"],
+    "category": "CoreDotNet",
+    "weight": 6
+  },
+  {
+    "name": "MAUI",
+    "aliases": [".net maui", "dotnet maui", "xamarin", "xamarin.forms", "xamarin forms"],
+    "category": "CoreDotNet",
+    "weight": 5
+  },
+  {
+    "name": "SignalR",
+    "aliases": ["signalr core", "asp.net signalr", "real-time communication"],
+    "category": "CoreDotNet",
+    "weight": 6
+  },
+  {
+    "name": "gRPC",
+    "aliases": ["grpc-dotnet", "grpc .net", "protobuf", "protocol buffers", "grpc-net"],
+    "category": "CoreDotNet",
+    "weight": 7
+  },
+  {
+    "name": "Minimal APIs",
+    "aliases": ["minimal api", "minimal-apis", "asp.net minimal api"],
+    "category": "CoreDotNet",
+    "weight": 6
+  },
+  {
+    "name": "LINQ",
+    "aliases": ["language integrated query", "linq to sql", "linq to entities"],
+    "category": "CoreDotNet",
+    "weight": 7
+  },
+  {
+    "name": "Dapper",
+    "aliases": ["dapper orm", "dapper micro-orm", "micro orm"],
+    "category": "CoreDotNet",
+    "weight": 6
+  },
+  {
+    "name": "Microservices",
+    "aliases": ["microservice", "micro-services", "micro services", "microservice architecture", "microservices architecture"],
+    "category": "Architecture",
+    "weight": 9
+  },
+  {
+    "name": "DDD",
+    "aliases": ["domain driven design", "domain-driven design", "domain driven", "ddd pattern", "ddd architecture"],
+    "category": "Architecture",
+    "weight": 8
+  },
+  {
+    "name": "CQRS",
+    "aliases": ["command query responsibility segregation", "cqrs pattern", "cqrs/es"],
+    "category": "Architecture",
+    "weight": 7
+  },
+  {
+    "name": "Event Sourcing",
+    "aliases": ["event-sourcing", "eventsourcing", "es pattern", "event store"],
+    "category": "Architecture",
+    "weight": 7
+  },
+  {
+    "name": "Clean Architecture",
+    "aliases": ["clean-architecture", "onion architecture", "ports and adapters", "clean arch"],
+    "category": "Architecture",
+    "weight": 8
+  },
+  {
+    "name": "Hexagonal Architecture",
+    "aliases": ["hexagonal", "ports-and-adapters", "hex architecture"],
+    "category": "Architecture",
+    "weight": 6
+  },
+  {
+    "name": "SOLID",
+    "aliases": ["solid principles", "solid design principles", "srp", "ocp", "lsp", "isp", "dip"],
+    "category": "Architecture",
+    "weight": 8
+  },
+  {
+    "name": "Design Patterns",
+    "aliases": ["design-patterns", "gang of four", "gof patterns", "software design patterns", "creational patterns", "behavioral patterns", "structural patterns"],
+    "category": "Architecture",
+    "weight": 7
+  },
+  {
+    "name": "MediatR",
+    "aliases": ["mediatr pattern", "mediator pattern", "mediator"],
+    "category": "Architecture",
+    "weight": 7
+  },
+  {
+    "name": "Vertical Slice Architecture",
+    "aliases": ["vertical slice", "vertical-slice", "vertical slices", "feature slices"],
+    "category": "Architecture",
+    "weight": 6
+  },
+  {
+    "name": "Azure",
+    "aliases": ["microsoft azure", "azure cloud", "azure platform", "ms azure"],
+    "category": "Cloud",
+    "weight": 10
+  },
+  {
+    "name": "AWS",
+    "aliases": ["amazon web services", "amazon aws", "aws cloud"],
+    "category": "Cloud",
+    "weight": 9
+  },
+  {
+    "name": "GCP",
+    "aliases": ["google cloud", "google cloud platform", "gcloud"],
+    "category": "Cloud",
+    "weight": 7
+  },
+  {
+    "name": "Azure Functions",
+    "aliases": ["azure function", "serverless azure", "azure serverless", "az functions"],
+    "category": "Cloud",
+    "weight": 8
+  },
+  {
+    "name": "Azure Service Bus",
+    "aliases": ["service bus", "asb", "azure servicebus", "az service bus"],
+    "category": "Cloud",
+    "weight": 8
+  },
+  {
+    "name": "Azure Event Grid",
+    "aliases": ["event grid", "eventgrid", "az event grid"],
+    "category": "Cloud",
+    "weight": 6
+  },
+  {
+    "name": "AKS",
+    "aliases": ["azure kubernetes service", "azure k8s", "azure kubernetes", "aks cluster"],
+    "category": "Cloud",
+    "weight": 8
+  },
+  {
+    "name": "Azure DevOps",
+    "aliases": ["azdo", "azure devops services", "azure devops pipelines", "vsts", "tfs", "team foundation server", "azure boards", "azure repos"],
+    "category": "Cloud",
+    "weight": 8
+  },
+  {
+    "name": "Azure AD/Entra ID",
+    "aliases": ["azure ad", "azure active directory", "entra id", "microsoft entra", "aad", "azure identity", "entra"],
+    "category": "Cloud",
+    "weight": 7
+  },
+  {
+    "name": "Azure Cosmos DB",
+    "aliases": ["cosmos db", "cosmosdb", "cosmos", "azure cosmos"],
+    "category": "Cloud",
+    "weight": 7
+  },
+  {
+    "name": "Azure SQL",
+    "aliases": ["azure sql database", "azure sql db", "azure sql managed instance", "azure sql mi"],
+    "category": "Cloud",
+    "weight": 7
+  },
+  {
+    "name": "Azure API Management",
+    "aliases": ["apim", "api management", "azure apim", "az api management"],
+    "category": "Cloud",
+    "weight": 6
+  },
+  {
+    "name": "AWS Lambda",
+    "aliases": ["lambda", "aws lambda function", "lambda function", "serverless aws"],
+    "category": "Cloud",
+    "weight": 7
+  },
+  {
+    "name": "AWS S3",
+    "aliases": ["s3", "amazon s3", "simple storage service", "aws s3 bucket"],
+    "category": "Cloud",
+    "weight": 6
+  },
+  {
+    "name": "AWS SQS",
+    "aliases": ["sqs", "amazon sqs", "simple queue service", "aws queue"],
+    "category": "Cloud",
+    "weight": 6
+  },
+  {
+    "name": "Docker",
+    "aliases": ["docker container", "docker containers", "dockerfile", "docker-compose", "docker compose", "containerization"],
+    "category": "DevOps",
+    "weight": 9
+  },
+  {
+    "name": "Kubernetes",
+    "aliases": ["k8s", "kube", "kubernetes cluster", "k8s cluster", "container orchestration"],
+    "category": "DevOps",
+    "weight": 9
+  },
+  {
+    "name": "Terraform",
+    "aliases": ["terraform iac", "tf", "hashicorp terraform", "infrastructure as code", "iac"],
+    "category": "DevOps",
+    "weight": 8
+  },
+  {
+    "name": "GitHub Actions",
+    "aliases": ["gh actions", "github action", "github ci", "github ci/cd", "github workflows"],
+    "category": "DevOps",
+    "weight": 8
+  },
+  {
+    "name": "Helm",
+    "aliases": ["helm charts", "helm chart", "kubernetes helm", "k8s helm"],
+    "category": "DevOps",
+    "weight": 7
+  },
+  {
+    "name": "ArgoCD",
+    "aliases": ["argo cd", "argo-cd", "argocd gitops", "argo"],
+    "category": "DevOps",
+    "weight": 6
+  },
+  {
+    "name": "Jenkins",
+    "aliases": ["jenkins ci", "jenkins pipeline", "jenkinsfile", "jenkins ci/cd"],
+    "category": "DevOps",
+    "weight": 6
+  },
+  {
+    "name": "Ansible",
+    "aliases": ["ansible automation", "ansible playbook", "ansible playbooks"],
+    "category": "DevOps",
+    "weight": 5
+  },
+  {
+    "name": "Prometheus",
+    "aliases": ["prometheus monitoring", "prom", "prometheus metrics"],
+    "category": "DevOps",
+    "weight": 6
+  },
+  {
+    "name": "Grafana",
+    "aliases": ["grafana dashboards", "grafana dashboard", "grafana monitoring"],
+    "category": "DevOps",
+    "weight": 6
+  },
+  {
+    "name": "SQL Server",
+    "aliases": ["mssql", "ms sql", "t-sql", "tsql", "microsoft sql server", "sql server 2019", "sql server 2022", "ms sql server", "transact-sql", "transact sql"],
+    "category": "Databases",
+    "weight": 9
+  },
+  {
+    "name": "PostgreSQL",
+    "aliases": ["postgres", "pg", "postgresql db", "postgre", "pgsql"],
+    "category": "Databases",
+    "weight": 9
+  },
+  {
+    "name": "MongoDB",
+    "aliases": ["mongo", "mongo db", "mongodb atlas", "nosql mongodb"],
+    "category": "Databases",
+    "weight": 7
+  },
+  {
+    "name": "Redis",
+    "aliases": ["redis cache", "redis cluster", "redis db", "redis sentinel", "azure redis", "elasticache redis"],
+    "category": "Databases",
+    "weight": 8
+  },
+  {
+    "name": "Elasticsearch",
+    "aliases": ["elastic", "elastic search", "es", "elasticsearch cluster", "opensearch"],
+    "category": "Databases",
+    "weight": 7
+  },
+  {
+    "name": "CosmosDB",
+    "aliases": ["cosmos db", "cosmosdb", "azure cosmos db", "cosmos database"],
+    "category": "Databases",
+    "weight": 7
+  },
+  {
+    "name": "DynamoDB",
+    "aliases": ["dynamo db", "dynamodb", "aws dynamodb", "amazon dynamodb"],
+    "category": "Databases",
+    "weight": 6
+  },
+  {
+    "name": "SQLite",
+    "aliases": ["sqlite3", "sqlite db", "sq lite"],
+    "category": "Databases",
+    "weight": 4
+  },
+  {
+    "name": "Cassandra",
+    "aliases": ["apache cassandra", "cassandra db", "cassandradb"],
+    "category": "Databases",
+    "weight": 5
+  },
+  {
+    "name": "RabbitMQ",
+    "aliases": ["rabbit mq", "rabbitmq broker", "amqp", "rabbit"],
+    "category": "Messaging",
+    "weight": 8
+  },
+  {
+    "name": "Kafka",
+    "aliases": ["apache kafka", "kafka streams", "confluent kafka", "kafka broker", "event streaming"],
+    "category": "Messaging",
+    "weight": 9
+  },
+  {
+    "name": "Azure Service Bus",
+    "aliases": ["service bus", "asb", "azure servicebus"],
+    "category": "Messaging",
+    "weight": 8
+  },
+  {
+    "name": "MassTransit",
+    "aliases": ["mass transit", "masstransit framework", "masstransit bus"],
+    "category": "Messaging",
+    "weight": 7
+  },
+  {
+    "name": "NServiceBus",
+    "aliases": ["nservicebus", "n service bus", "particular nservicebus"],
+    "category": "Messaging",
+    "weight": 6
+  },
+  {
+    "name": "NATS",
+    "aliases": ["nats.io", "nats messaging", "nats server", "nats jetstream"],
+    "category": "Messaging",
+    "weight": 5
+  },
+  {
+    "name": "xUnit",
+    "aliases": ["xunit.net", "xunit testing", "xunit test", "xunit framework"],
+    "category": "Testing",
+    "weight": 8
+  },
+  {
+    "name": "NUnit",
+    "aliases": ["nunit testing", "nunit framework", "nunit test"],
+    "category": "Testing",
+    "weight": 7
+  },
+  {
+    "name": "Moq",
+    "aliases": ["moq framework", "moq mocking", "moq library"],
+    "category": "Testing",
+    "weight": 7
+  },
+  {
+    "name": "FluentAssertions",
+    "aliases": ["fluent assertions", "fluent-assertions", "fluentassertions library"],
+    "category": "Testing",
+    "weight": 6
+  },
+  {
+    "name": "ArchUnitNET",
+    "aliases": ["archunit", "arch unit", "archunit.net", "architecture tests", "architecture testing"],
+    "category": "Testing",
+    "weight": 5
+  },
+  {
+    "name": "Testcontainers",
+    "aliases": ["test containers", "testcontainers-dotnet", "testcontainers .net", "docker testing"],
+    "category": "Testing",
+    "weight": 6
+  },
+  {
+    "name": "k6",
+    "aliases": ["grafana k6", "k6 load testing", "k6 performance", "load testing"],
+    "category": "Testing",
+    "weight": 5
+  },
+  {
+    "name": "Playwright",
+    "aliases": ["playwright dotnet", "playwright .net", "microsoft playwright", "playwright testing", "playwright e2e"],
+    "category": "Testing",
+    "weight": 6
+  },
+  {
+    "name": "Selenium",
+    "aliases": ["selenium webdriver", "selenium testing", "selenium .net", "selenium automation", "web automation"],
+    "category": "Testing",
+    "weight": 6
+  },
+  {
+    "name": "BenchmarkDotNet",
+    "aliases": ["benchmark dotnet", "benchmarkdotnet", "benchmark .net", "dotnet benchmarks", "performance benchmarks"],
+    "category": "Testing",
+    "weight": 5
+  },
+  {
+    "name": "OAuth2",
+    "aliases": ["oauth 2.0", "oauth2.0", "oauth", "oauth 2", "authorization framework"],
+    "category": "Security",
+    "weight": 8
+  },
+  {
+    "name": "OpenID Connect",
+    "aliases": ["oidc", "openid", "open id connect", "openidconnect"],
+    "category": "Security",
+    "weight": 7
+  },
+  {
+    "name": "IdentityServer",
+    "aliases": ["identity server", "identityserver4", "identity server 4", "ids4"],
+    "category": "Security",
+    "weight": 6
+  },
+  {
+    "name": "Duende IdentityServer",
+    "aliases": ["duende", "duende identity", "duende identityserver", "duende ids"],
+    "category": "Security",
+    "weight": 6
+  },
+  {
+    "name": "JWT",
+    "aliases": ["json web token", "json web tokens", "jwt token", "jwt authentication", "jwt auth", "bearer token"],
+    "category": "Security",
+    "weight": 8
+  },
+  {
+    "name": "OWASP",
+    "aliases": ["owasp top 10", "owasp top ten", "owasp security", "web security", "application security"],
+    "category": "Security",
+    "weight": 6
+  },
+  {
+    "name": "OpenTelemetry",
+    "aliases": ["otel", "open telemetry", "opentelemetry .net", "opentelemetry-dotnet", "otel dotnet"],
+    "category": "Observability",
+    "weight": 8
+  },
+  {
+    "name": "Application Insights",
+    "aliases": ["app insights", "azure application insights", "azure app insights", "appinsights", "ai monitoring"],
+    "category": "Observability",
+    "weight": 7
+  },
+  {
+    "name": "Serilog",
+    "aliases": ["serilog logging", "serilog .net", "structured logging serilog"],
+    "category": "Observability",
+    "weight": 7
+  },
+  {
+    "name": "Seq",
+    "aliases": ["seq logging", "datalust seq", "seq server"],
+    "category": "Observability",
+    "weight": 5
+  },
+  {
+    "name": "ELK Stack",
+    "aliases": ["elk", "elasticsearch logstash kibana", "elastic stack", "elk stack", "kibana", "logstash"],
+    "category": "Observability",
+    "weight": 7
+  },
+  {
+    "name": "Jaeger",
+    "aliases": ["jaeger tracing", "jaeger distributed tracing", "openjaeger"],
+    "category": "Observability",
+    "weight": 5
+  },
+  {
+    "name": "Zipkin",
+    "aliases": ["zipkin tracing", "zipkin distributed tracing"],
+    "category": "Observability",
+    "weight": 4
+  },
+  {
+    "name": "React",
+    "aliases": ["reactjs", "react.js", "react js", "react 18", "react 19"],
+    "category": "Frontend",
+    "weight": 8
+  },
+  {
+    "name": "Angular",
+    "aliases": ["angular 17", "angular 18", "angularjs", "angular.js", "angular framework"],
+    "category": "Frontend",
+    "weight": 7
+  },
+  {
+    "name": "TypeScript",
+    "aliases": ["typescript", "ts", "type script"],
+    "category": "Frontend",
+    "weight": 8
+  },
+  {
+    "name": "JavaScript",
+    "aliases": ["js", "ecmascript", "es6", "es2015", "es2020", "es2022", "vanilla js"],
+    "category": "Frontend",
+    "weight": 7
+  },
+  {
+    "name": "Vue.js",
+    "aliases": ["vue", "vuejs", "vue 3", "vue.js 3"],
+    "category": "Frontend",
+    "weight": 6
+  },
+  {
+    "name": "Blazor WASM",
+    "aliases": ["blazor webassembly", "blazor wasm", "blazor client-side", "blazor client side"],
+    "category": "Frontend",
+    "weight": 5
+  },
+  {
+    "name": "HTML",
+    "aliases": ["html5", "html 5", "hypertext markup language"],
+    "category": "Frontend",
+    "weight": 5
+  },
+  {
+    "name": "CSS",
+    "aliases": ["css3", "css 3", "cascading style sheets", "scss", "sass", "less"],
+    "category": "Frontend",
+    "weight": 5
+  },
+  {
+    "name": "Tailwind CSS",
+    "aliases": ["tailwindcss", "tailwind", "tailwind css framework"],
+    "category": "Frontend",
+    "weight": 5
+  },
+  {
+    "name": "ML.NET",
+    "aliases": ["mlnet", "ml dotnet", "ml .net", "microsoft ml.net"],
+    "category": "MachineLearning",
+    "weight": 6
+  },
+  {
+    "name": "Semantic Kernel",
+    "aliases": ["semantic-kernel", "microsoft semantic kernel", "sk", "semantic kernel .net"],
+    "category": "MachineLearning",
+    "weight": 7
+  },
+  {
+    "name": "Azure AI Services",
+    "aliases": ["azure cognitive services", "cognitive services", "azure ai", "azure openai service", "azure ml"],
+    "category": "MachineLearning",
+    "weight": 7
+  },
+  {
+    "name": "Azure OpenAI",
+    "aliases": ["azure openai service", "aoai", "azure gpt", "azure chatgpt", "openai azure"],
+    "category": "MachineLearning",
+    "weight": 7
+  },
+  {
+    "name": "TensorFlow",
+    "aliases": ["tensorflow.net", "tensorflow dotnet", "tf", "tensorflow 2"],
+    "category": "MachineLearning",
+    "weight": 5
+  }
+]

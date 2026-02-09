@@ -1,0 +1,103 @@
+{
+  "personal": {
+    "name": "Your Full Name",
+    "title": "Senior .NET Architect",
+    "email": "you@example.com",
+    "phone": "+1234567890",
+    "location": "Kyiv, Ukraine",
+    "linkedIn": "https://linkedin.com/in/yourprofile",
+    "github": "https://github.com/yourusername",
+    "summary": "Experienced .NET architect with 10+ years building cloud-native solutions"
+  },
+  "skills": [
+    {
+      "name": "C#",
+      "level": "Expert",
+      "yearsOfExperience": 10
+    },
+    {
+      "name": "ASP.NET Core",
+      "level": "Expert",
+      "yearsOfExperience": 8
+    },
+    {
+      "name": "Azure",
+      "level": "Advanced",
+      "yearsOfExperience": 6
+    },
+    {
+      "name": "Microservices",
+      "level": "Advanced",
+      "yearsOfExperience": 5
+    },
+    {
+      "name": "Kubernetes",
+      "level": "Intermediate",
+      "yearsOfExperience": 3
+    },
+    {
+      "name": "SQL Server",
+      "level": "Advanced",
+      "yearsOfExperience": 10
+    },
+    {
+      "name": "Docker",
+      "level": "Advanced",
+      "yearsOfExperience": 5
+    }
+  ],
+  "experiences": [
+    {
+      "company": "Tech Corp International",
+      "title": "Lead .NET Architect",
+      "startDate": "2020-01-01",
+      "endDate": "2024-01-01",
+      "description": "Led architecture of cloud-native microservices platform",
+      "achievements": [
+        "Migrated monolithic application to microservices architecture, reducing deployment time by 80%",
+        "Led team of 8 engineers in Azure cloud migration",
+        "Implemented CQRS/Event Sourcing patterns for high-throughput systems"
+      ],
+      "technologies": ["C#", ".NET Core", "Azure", "Kubernetes", "SQL Server", "RabbitMQ"]
+    },
+    {
+      "company": "Software Solutions Ltd",
+      "title": "Senior .NET Developer",
+      "startDate": "2015-06-01",
+      "endDate": "2019-12-31",
+      "description": "Full-stack development with .NET and React",
+      "achievements": [
+        "Developed RESTful APIs serving 1M+ daily requests",
+        "Implemented CI/CD pipelines reducing release time from days to hours",
+        "Mentored junior developers on clean architecture principles"
+      ],
+      "technologies": ["C#", "ASP.NET Core", "SQL Server", "React", "Docker"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Technical University",
+      "degree": "Master's Degree",
+      "field": "Computer Science",
+      "graduationYear": 2014
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Azure Solutions Architect Expert (AZ-305)",
+      "issuer": "Microsoft",
+      "dateObtained": "2023-06-15"
+    }
+  ],
+  "preferences": {
+    "remote": true,
+    "relocate": false,
+    "minSalaryUsd": 120000,
+    "targetSalaryUsd": 180000,
+    "preferredLocations": ["Remote", "USA", "EU", "Ukraine"],
+    "preferredRoles": ["Solutions Architect", "Staff Engineer", "Principal Engineer"],
+    "excludedCompanies": ["Company A", "Company B"],
+    "workloadPreference": "FullTime",
+    "noticePeriodinDays": 30
+  }
+}

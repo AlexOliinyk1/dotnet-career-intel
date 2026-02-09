@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CareerIntel.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CareerIntel.Core\CareerIntel.Core.csproj" />
+    <ProjectReference Include="..\CareerIntel.Scrapers\CareerIntel.Scrapers.csproj" />
+    <ProjectReference Include="..\CareerIntel.Analysis\CareerIntel.Analysis.csproj" />
+    <ProjectReference Include="..\CareerIntel.Matching\CareerIntel.Matching.csproj" />
+    <ProjectReference Include="..\CareerIntel.Resume\CareerIntel.Resume.csproj" />
+    <ProjectReference Include="..\CareerIntel.Notifications\CareerIntel.Notifications.csproj" />
+    <ProjectReference Include="..\CareerIntel.Intelligence\CareerIntel.Intelligence.csproj" />
+    <ProjectReference Include="..\CareerIntel.Persistence\CareerIntel.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>
