@@ -40,6 +40,7 @@ public static class DashboardCommand
         PrintHeader();
 
         await PrintProfileSection(dataDir, verbose);
+        await PrintGoalsSection(dataDir, verbose);
         await PrintVacancyDatabaseSection(dataDir, verbose);
         await PrintMatchOverviewSection(dataDir, verbose);
         PrintLearningProgressSection(dataDir, verbose);
@@ -202,7 +203,145 @@ public static class DashboardCommand
     }
 
     // ─────────────────────────────────────────────────────────────
-    //  2. Vacancy Database Stats
+    //  2. Goals & Progress Tracking
+    // ─────────────────────────────────────────────────────────────
+
+    private static async Task PrintGoalsSection(string dataDir, bool verbose)
+    {
+        PrintSectionHeader("Goals");
+
+        var goalsPath = Path.Combine(dataDir, "goals.json");
+
+        if (!File.Exists(goalsPath))
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine("  No goals set yet. Create goals.json to track your career objectives.");
+            Console.ResetColor();
+            Console.WriteLine();
+            return;
+        }
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(goalsPath);
+            var goalsData = JsonSerializer.Deserialize<GoalsData>(json, JsonOptions);
+
+            if (goalsData?.Goals is null || goalsData.Goals.Count == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine("  No active goals defined.");
+                Console.ResetColor();
+                Console.WriteLine();
+                return;
+            }
+
+            var activeGoals = goalsData.Goals
+                .Where(g => !g.Completed && !g.Archived)
+                .OrderBy(g => g.Deadline)
+                .ToList();
+
+            if (activeGoals.Count == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"  All {goalsData.Goals.Count} goals completed! \ud83c\udf89");
+                Console.ResetColor();
+                Console.WriteLine();
+                return;
+            }
+
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine($"  Active goals: {activeGoals.Count}/{goalsData.Goals.Count}");
+            Console.ResetColor();
+
+            foreach (var goal in activeGoals.Take(verbose ? 10 : 5))
+            {
+                var progress = Math.Clamp((double)goal.Current / goal.Target * 100, 0, 100);
+                var progressInt = (int)Math.Round(progress);
+
+                // Goal title and deadline
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write($"\n  {goal.Icon} {goal.Title}");
+
+                if (goal.Deadline != default && goal.Deadline > DateTimeOffset.MinValue)
+                {
+                    var daysLeft = (goal.Deadline - DateTimeOffset.UtcNow).Days;
+                    if (daysLeft >= 0)
+                    {
+                        Console.ForegroundColor = daysLeft <= 7 ? ConsoleColor.Red : ConsoleColor.DarkGray;
+                        Console.Write($" ({daysLeft} days left)");
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.Write(" (OVERDUE)");
+                    }
+                }
+                Console.WriteLine();
+
+                // Progress bar
+                var barWidth = 30;
+                var filled = (int)Math.Round(progress / 100.0 * barWidth);
+                filled = Math.Clamp(filled, 0, barWidth);
+                var empty = barWidth - filled;
+
+                Console.Write("     ");
+                var barColor = progress switch
+                {
+                    >= 100 => ConsoleColor.Green,
+                    >= 75 => ConsoleColor.Cyan,
+                    >= 50 => ConsoleColor.Yellow,
+                    >= 25 => ConsoleColor.DarkYellow,
+                    _ => ConsoleColor.Red
+                };
+                Console.ForegroundColor = barColor;
+                Console.Write(new string('\u2588', filled));
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write(new string('\u2591', empty));
+                Console.ForegroundColor = barColor;
+                Console.Write($" {goal.Current}/{goal.Target}");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($" ({progressInt}%)");
+                Console.ResetColor();
+            }
+
+            if (!verbose && activeGoals.Count > 5)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"\n  ...and {activeGoals.Count - 5} more. Use --verbose to see all.");
+                Console.ResetColor();
+            }
+
+            // Show recently completed goals
+            var completed = goalsData.Goals
+                .Where(g => g.Completed && !g.Archived)
+                .OrderByDescending(g => g.CompletedDate)
+                .Take(3)
+                .ToList();
+
+            if (completed.Count > 0 && verbose)
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("  Recently completed:");
+                foreach (var goal in completed)
+                {
+                    Console.WriteLine($"    \u2713 {goal.Title} ({goal.CompletedDate:MMM dd})");
+                }
+                Console.ResetColor();
+            }
+        }
+        catch
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("  Error reading goals file.");
+            Console.ResetColor();
+        }
+
+        Console.WriteLine();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  3. Vacancy Database Stats
     // ─────────────────────────────────────────────────────────────
 
     private static async Task PrintVacancyDatabaseSection(string dataDir, bool verbose)
@@ -299,7 +438,7 @@ public static class DashboardCommand
     }
 
     // ─────────────────────────────────────────────────────────────
-    //  3. Match Overview
+    //  4. Match Overview
     // ─────────────────────────────────────────────────────────────
 
     private static async Task PrintMatchOverviewSection(string dataDir, bool verbose)
@@ -410,7 +549,7 @@ public static class DashboardCommand
     }
 
     // ─────────────────────────────────────────────────────────────
-    //  4. Learning Progress
+    //  5. Learning Progress
     // ─────────────────────────────────────────────────────────────
 
     private static void PrintLearningProgressSection(string dataDir, bool verbose)
@@ -515,7 +654,7 @@ public static class DashboardCommand
     }
 
     // ─────────────────────────────────────────────────────────────
-    //  5. System Capabilities
+    //  6. System Capabilities
     // ─────────────────────────────────────────────────────────────
 
     private static void PrintSystemCapabilitiesSection(string dataDir)
@@ -577,7 +716,7 @@ public static class DashboardCommand
     }
 
     // ─────────────────────────────────────────────────────────────
-    //  6. Quick Actions
+    //  7. Quick Actions
     // ─────────────────────────────────────────────────────────────
 
     private static async Task PrintSuggestedActionsSection(string dataDir)
@@ -735,5 +874,56 @@ public static class DashboardCommand
         public int SelfConfidence { get; set; }
         public double QuizAccuracy { get; set; }
         public int QuizAttempts { get; set; }
+    }
+
+    /// <summary>
+    /// Career goals data structure for goals.json
+    /// </summary>
+    private sealed class GoalsData
+    {
+        public List<Goal> Goals { get; set; } = [];
+    }
+
+    private sealed class Goal
+    {
+        /// <summary>
+        /// Goal title/description
+        /// </summary>
+        public string Title { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Emoji icon for the goal (e.g., "\ud83c\udfaf", "\ud83d\udcbc", "\ud83d\udcda")
+        /// </summary>
+        public string Icon { get; set; } = "\ud83c\udfaf";
+
+        /// <summary>
+        /// Current progress value
+        /// </summary>
+        public int Current { get; set; }
+
+        /// <summary>
+        /// Target value to achieve
+        /// </summary>
+        public int Target { get; set; }
+
+        /// <summary>
+        /// Goal deadline
+        /// </summary>
+        public DateTimeOffset Deadline { get; set; }
+
+        /// <summary>
+        /// Whether the goal is completed
+        /// </summary>
+        public bool Completed { get; set; }
+
+        /// <summary>
+        /// When the goal was completed
+        /// </summary>
+        public DateTimeOffset CompletedDate { get; set; }
+
+        /// <summary>
+        /// Whether the goal is archived (hidden from active list)
+        /// </summary>
+        public bool Archived { get; set; }
     }
 }

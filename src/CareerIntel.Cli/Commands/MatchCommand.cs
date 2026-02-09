@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using CareerIntel.Core.Enums;
 using CareerIntel.Core.Interfaces;
 using CareerIntel.Core.Models;
 using CareerIntel.Notifications;
@@ -11,6 +12,7 @@ namespace CareerIntel.Cli.Commands;
 /// <summary>
 /// CLI command that matches vacancies against the user profile and displays ranked results.
 /// Usage: career-intel match [--input path] [--min-score n] [--top n] [--notify]
+/// Deal-breaker filters: --remote-only, --min-salary, --no-relocation, --allow-geo
 /// </summary>
 public static class MatchCommand
 {
@@ -35,20 +37,71 @@ public static class MatchCommand
             getDefaultValue: () => false,
             description: "Send results via configured notification channels (Telegram/Email)");
 
+        // Deal-breaker filters
+        var remoteOnlyOption = new Option<bool>(
+            "--remote-only",
+            getDefaultValue: () => false,
+            description: "DEAL-BREAKER: Only show fully remote or hybrid positions");
+
+        var minSalaryOption = new Option<decimal?>(
+            "--min-salary",
+            description: "DEAL-BREAKER: Minimum acceptable salary (will filter out lower or unspecified)");
+
+        var noRelocationOption = new Option<bool>(
+            "--no-relocation",
+            getDefaultValue: () => false,
+            description: "DEAL-BREAKER: Exclude jobs requiring relocation");
+
+        var allowGeoOption = new Option<string?>(
+            "--allow-geo",
+            description: "DEAL-BREAKER: Only show jobs allowing this location (e.g., 'Ukraine', 'Worldwide', 'Europe')");
+
+        var excludeB2BOption = new Option<bool>(
+            "--exclude-b2b",
+            getDefaultValue: () => false,
+            description: "DEAL-BREAKER: Exclude B2B/contract positions");
+
         var command = new Command("match", "Match vacancies against your profile and rank results")
         {
             inputOption,
             minScoreOption,
             topOption,
-            notifyOption
+            notifyOption,
+            remoteOnlyOption,
+            minSalaryOption,
+            noRelocationOption,
+            allowGeoOption,
+            excludeB2BOption
         };
 
-        command.SetHandler(ExecuteAsync, inputOption, minScoreOption, topOption, notifyOption);
+        command.SetHandler(async (context) =>
+        {
+            var input = context.ParseResult.GetValueForOption(inputOption);
+            var minScore = context.ParseResult.GetValueForOption(minScoreOption);
+            var top = context.ParseResult.GetValueForOption(topOption);
+            var notify = context.ParseResult.GetValueForOption(notifyOption);
+            var remoteOnly = context.ParseResult.GetValueForOption(remoteOnlyOption);
+            var minSalary = context.ParseResult.GetValueForOption(minSalaryOption);
+            var noRelocation = context.ParseResult.GetValueForOption(noRelocationOption);
+            var allowGeo = context.ParseResult.GetValueForOption(allowGeoOption);
+            var excludeB2B = context.ParseResult.GetValueForOption(excludeB2BOption);
+
+            await ExecuteAsync(input, minScore, top, notify, remoteOnly, minSalary, noRelocation, allowGeo, excludeB2B);
+        });
 
         return command;
     }
 
-    private static async Task ExecuteAsync(string? input, double minScore, int top, bool notify)
+    private static async Task ExecuteAsync(
+        string? input,
+        double minScore,
+        int top,
+        bool notify,
+        bool remoteOnly,
+        decimal? minSalary,
+        bool noRelocation,
+        string? allowGeo,
+        bool excludeB2B)
     {
         using var serviceProvider = Program.BuildServiceProvider();
         var logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("CareerIntel.Cli.MatchCommand");
@@ -97,10 +150,49 @@ public static class MatchCommand
             return;
         }
 
-        Console.WriteLine($"Matching {vacancies.Count} vacancies (min score: {minScore})...\n");
+        var originalCount = vacancies.Count;
 
-        // Rank vacancies
-        var ranked = matchEngine.RankVacancies(vacancies, minScore);
+        // Apply deal-breaker filters
+        var filtered = ApplyDealBreakerFilters(
+            vacancies,
+            remoteOnly,
+            minSalary,
+            noRelocation,
+            allowGeo,
+            excludeB2B);
+
+        if (filtered.Count < originalCount)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"Deal-breaker filters: {originalCount} -> {filtered.Count} vacancies");
+            Console.ResetColor();
+
+            if (remoteOnly)
+                Console.WriteLine("  ✓ Remote-only filter applied");
+            if (minSalary.HasValue)
+                Console.WriteLine($"  ✓ Minimum salary: {minSalary:N0}");
+            if (noRelocation)
+                Console.WriteLine("  ✓ No relocation required");
+            if (!string.IsNullOrEmpty(allowGeo))
+                Console.WriteLine($"  ✓ Geo filter: {allowGeo}");
+            if (excludeB2B)
+                Console.WriteLine("  ✓ Excluding B2B/contract positions");
+
+            Console.WriteLine();
+        }
+
+        if (filtered.Count == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("No vacancies passed deal-breaker filters.");
+            Console.ResetColor();
+            return;
+        }
+
+        Console.WriteLine($"Matching {filtered.Count} vacancies (min score: {minScore})...\n");
+
+        // Rank vacancies (use filtered list)
+        var ranked = matchEngine.RankVacancies(filtered, minScore);
         var topMatches = ranked.Take(top).ToList();
 
         if (topMatches.Count == 0)
@@ -307,5 +399,101 @@ public static class MatchCommand
         return Directory.GetFiles(Program.DataDirectory, "vacancies-*.json")
             .OrderByDescending(f => f)
             .FirstOrDefault();
+    }
+
+    private static List<JobVacancy> ApplyDealBreakerFilters(
+        List<JobVacancy> vacancies,
+        bool remoteOnly,
+        decimal? minSalary,
+        bool noRelocation,
+        string? allowGeo,
+        bool excludeB2B)
+    {
+        var filtered = vacancies.AsEnumerable();
+
+        // Remote-only filter
+        if (remoteOnly)
+        {
+            filtered = filtered.Where(v =>
+                v.RemotePolicy == RemotePolicy.FullyRemote ||
+                v.RemotePolicy == RemotePolicy.Hybrid);
+        }
+
+        // Minimum salary filter
+        if (minSalary.HasValue)
+        {
+            filtered = filtered.Where(v =>
+                v.SalaryMin.HasValue && v.SalaryMin.Value >= minSalary.Value);
+        }
+
+        // No relocation filter (exclude jobs with relocation in title or description)
+        if (noRelocation)
+        {
+            filtered = filtered.Where(v =>
+            {
+                var text = $"{v.Title} {v.Description}".ToLowerInvariant();
+                return !text.Contains("relocation") &&
+                       !text.Contains("relocate") &&
+                       !text.Contains("on-site only") &&
+                       !text.Contains("onsite only");
+            });
+        }
+
+        // Geo restriction filter
+        if (!string.IsNullOrWhiteSpace(allowGeo))
+        {
+            var geoLower = allowGeo.ToLowerInvariant();
+            filtered = filtered.Where(v =>
+            {
+                // If no geo restrictions mentioned, assume worldwide
+                if (v.GeoRestrictions.Count == 0)
+                    return true;
+
+                var restrictions = string.Join(" ", v.GeoRestrictions).ToLowerInvariant();
+
+                // Check for explicit "worldwide" or "remote" (no restrictions)
+                if (restrictions.Contains("worldwide") || restrictions.Contains("any location"))
+                    return true;
+
+                var country = v.Country?.ToLowerInvariant() ?? "";
+                var title = v.Title?.ToLowerInvariant() ?? "";
+                var description = v.Description?.ToLowerInvariant() ?? "";
+                var combined = $"{country} {title} {description} {restrictions}";
+
+                // Check if the allowed geo is mentioned
+                if (combined.Contains(geoLower))
+                    return true;
+
+                // Special cases for Ukraine
+                if (geoLower == "ukraine" || geoLower == "ua")
+                {
+                    return combined.Contains("ukraine") ||
+                           combined.Contains("eastern europe") ||
+                           combined.Contains("europe") ||
+                           combined.Contains("eu only") ||
+                           (v.GeoRestrictions.Count == 0); // No restrictions = worldwide
+                }
+
+                // Special cases for Europe
+                if (geoLower == "europe" || geoLower == "eu")
+                {
+                    return combined.Contains("europe") ||
+                           combined.Contains("eu only") ||
+                           (v.GeoRestrictions.Count == 0);
+                }
+
+                return false;
+            });
+        }
+
+        // Exclude B2B filter
+        if (excludeB2B)
+        {
+            filtered = filtered.Where(v =>
+                v.EngagementType != EngagementType.ContractB2B &&
+                v.EngagementType != EngagementType.Freelance);
+        }
+
+        return filtered.ToList();
     }
 }

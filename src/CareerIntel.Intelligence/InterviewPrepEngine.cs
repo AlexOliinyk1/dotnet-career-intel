@@ -372,18 +372,188 @@ public sealed class InterviewPrepEngine(ILogger<InterviewPrepEngine> logger)
             });
         }
 
-        // Company style adjustments
-        if (company?.InterviewStyle is "FAANG-like")
+        // Company-specific behavioral questions based on interview style
+        if (company is not null)
+        {
+            questions.AddRange(GenerateCompanySpecificQuestions(company, seniority));
+        }
+
+        return questions;
+    }
+
+    /// <summary>
+    /// Generates company-specific interview questions based on company profile data.
+    /// </summary>
+    private static List<InferredQuestion> GenerateCompanySpecificQuestions(
+        CompanyProfile company,
+        SeniorityLevel seniority)
+    {
+        var questions = new List<InferredQuestion>();
+
+        // FAANG-like interview style
+        if (company.InterviewStyle == "FAANG-like")
         {
             questions.Add(new InferredQuestion
             {
                 Question = "Tell me about the most complex system you designed or significantly contributed to. What were the key technical challenges?",
                 Archetype = QuestionArchetype.Behavioral,
-                ArchetypeLabel = "Behavioral / Impact",
+                ArchetypeLabel = "Behavioral / Impact (FAANG)",
                 Difficulty = 4,
-                WhyAsked = "FAANG-style companies look for evidence of large-scale impact and complex problem-solving ability.",
-                StrongAnswer = "Describes a system with clear scale metrics, explains key design decisions and their tradeoffs, and quantifies impact.",
+                WhyAsked = $"{company.Name} uses FAANG-style interviews that look for evidence of large-scale impact and complex problem-solving.",
+                StrongAnswer = "Describes a system with clear scale metrics (QPS, data volume), explains key design decisions and their tradeoffs, quantifies business impact.",
                 WeakAnswer = "Describes a small feature without scale considerations or can't articulate why design decisions were made."
+            });
+
+            questions.Add(new InferredQuestion
+            {
+                Question = "Describe a situation where you had to make a high-stakes technical decision with incomplete information. What was your process?",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Decision Making (FAANG)",
+                Difficulty = 4,
+                WhyAsked = $"{company.Name} looks for strong judgment and systematic decision-making under uncertainty.",
+                StrongAnswer = "Describes framework for decision-making: gather what data is available, identify assumptions, evaluate risks, make reversible vs one-way decisions explicit, communicate rationale clearly.",
+                WeakAnswer = "Made a gut decision without explaining reasoning, or waited too long trying to get perfect information."
+            });
+
+            if (seniority >= SeniorityLevel.Senior)
+            {
+                questions.Add(new InferredQuestion
+                {
+                    Question = "Tell me about a time you influenced a team's technical direction without having direct authority. How did you build consensus?",
+                    Archetype = QuestionArchetype.Behavioral,
+                    ArchetypeLabel = "Behavioral / Influence (FAANG)",
+                    Difficulty = 4,
+                    WhyAsked = $"{company.Name} values technical leadership and ability to drive change across teams.",
+                    StrongAnswer = "Shows data-driven persuasion, stakeholder mapping, building coalitions, addressing concerns systematically. Demonstrates patience and persistence.",
+                    WeakAnswer = "Pushed their view without considering others' perspectives, or gave up when initial proposal was rejected."
+                });
+            }
+        }
+
+        // Startup interview style
+        else if (company.InterviewStyle == "Startup")
+        {
+            questions.Add(new InferredQuestion
+            {
+                Question = "Describe a time you had to ship a feature under tight deadline with limited resources. What did you prioritize and why?",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Resourcefulness (Startup)",
+                Difficulty = 3,
+                WhyAsked = $"{company.Name} is a startup that values speed, pragmatism, and ability to ship with constraints.",
+                StrongAnswer = "Shows MVP thinking, clear prioritization criteria, willingness to cut scope strategically, communication with stakeholders about tradeoffs. Delivered working software.",
+                WeakAnswer = "Over-engineered solution, missed deadline, or couldn't articulate what was essential vs nice-to-have."
+            });
+
+            questions.Add(new InferredQuestion
+            {
+                Question = "Tell me about a time you wore multiple hats to get something done. What skills did you have to learn quickly?",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Versatility (Startup)",
+                Difficulty = 3,
+                WhyAsked = $"Startups like {company.Name} need versatile engineers who can work across the stack and learn quickly.",
+                StrongAnswer = "Shows comfort with ambiguity, rapid skill acquisition, and willingness to work outside comfort zone. Highlights learning approach and scrappy problem-solving.",
+                WeakAnswer = "Stayed in lane, refused to help with adjacent areas, or took too long to ramp up on new technologies."
+            });
+        }
+
+        // European product company style
+        else if (company.InterviewStyle == "EU-product")
+        {
+            questions.Add(new InferredQuestion
+            {
+                Question = "How do you balance code quality with delivery speed? Give me a concrete example where you had to make this tradeoff.",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Quality (EU Product)",
+                Difficulty = 3,
+                WhyAsked = $"European product companies like {company.Name} typically value sustainable engineering practices.",
+                StrongAnswer = "Shows understanding that it's context-dependent. Describes using quality gates (tests, code review) while being pragmatic about when to ship faster. Mentions refactoring after initial release.",
+                WeakAnswer = "Either 'quality always comes first' (unrealistic) or 'just ship it' (unsustainable). Missing nuance."
+            });
+
+            questions.Add(new InferredQuestion
+            {
+                Question = "Describe your approach to documenting complex systems. How do you keep documentation up-to-date?",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Documentation (EU Product)",
+                Difficulty = 3,
+                WhyAsked = $"{company.Name} values maintainable, well-documented systems for long-term product development.",
+                StrongAnswer = "Describes documentation as code (ADRs, README-driven development), treating docs as deliverable, automation to keep docs fresh. Gives examples of docs that prevented incidents.",
+                WeakAnswer = "Admits documentation is always out of date, or only documents after the fact when asked."
+            });
+        }
+
+        // Outsourcing company style
+        else if (company.InterviewStyle == "Outsource")
+        {
+            questions.Add(new InferredQuestion
+            {
+                Question = "Tell me about a time you had to quickly ramp up on a new codebase or technology for a client project. What was your approach?",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Adaptability (Outsource)",
+                Difficulty = 3,
+                WhyAsked = $"Outsourcing companies like {company.Name} need engineers who can context-switch between clients and ramp up quickly.",
+                StrongAnswer = "Shows systematic approach to learning new codebases: read docs, run locally, find entry points, ask questions strategically. Emphasizes speed and productivity under uncertainty.",
+                WeakAnswer = "Took too long to become productive, or needed excessive hand-holding from client team."
+            });
+
+            questions.Add(new InferredQuestion
+            {
+                Question = "Describe a challenging interaction with a client or stakeholder. How did you manage expectations and deliver results?",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Client Management (Outsource)",
+                Difficulty = 3,
+                WhyAsked = $"{company.Name} works with external clients, requiring strong communication and expectation management.",
+                StrongAnswer = "Shows proactive communication, managing expectations early, providing options with tradeoffs, regular status updates. Turned a difficult situation into a positive outcome.",
+                WeakAnswer = "Avoided difficult conversations, surprised client with delays, or couldn't say no effectively."
+            });
+        }
+
+        // Tech stack specific questions
+        if (company.RealTechStack.Count > 0)
+        {
+            var relevantTech = company.RealTechStack.Take(2); // Top 2 most important tech
+            foreach (var tech in relevantTech)
+            {
+                questions.Add(new InferredQuestion
+                {
+                    Question = $"I see {company.Name} uses {tech}. Tell me about your most significant experience with {tech}. What challenges did you face?",
+                    Archetype = QuestionArchetype.Behavioral,
+                    ArchetypeLabel = $"Behavioral / {tech} Experience",
+                    Difficulty = 3,
+                    WhyAsked = $"{company.Name} uses {tech} in production. They want to verify hands-on experience beyond what's on your resume.",
+                    StrongAnswer = $"Provides specific project details, scale/performance metrics with {tech}, production challenges faced and resolved. Shows deep understanding beyond tutorial-level knowledge.",
+                    WeakAnswer = $"Vague about actual {tech} usage ('we used it for a project'), no concrete examples, or only theoretical knowledge."
+                });
+            }
+        }
+
+        // Questions based on common rejection reasons (what NOT to do)
+        if (company.CommonRejectionReasons.Count > 0 && company.CommonRejectionReasons.Contains("Poor communication"))
+        {
+            questions.Add(new InferredQuestion
+            {
+                Question = "Walk me through how you would explain a complex technical concept to a non-technical stakeholder. Give me a real example.",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Communication",
+                Difficulty = 3,
+                WhyAsked = $"{company.Name} has previously rejected candidates for poor communication. They're explicitly testing your ability to communicate clearly.",
+                StrongAnswer = "Uses analogies, avoids jargon, checks for understanding, tailors explanation to audience. Provides concrete example where clear communication led to better outcome.",
+                WeakAnswer = "Uses technical jargon with non-technical audience, doesn't check for understanding, or gets frustrated when people don't 'get it'."
+            });
+        }
+
+        // High difficulty bar companies
+        if (company.DifficultyBar >= 8)
+        {
+            questions.Add(new InferredQuestion
+            {
+                Question = "Tell me about the hardest technical problem you've solved. What made it hard and how did you approach it?",
+                Archetype = QuestionArchetype.Behavioral,
+                ArchetypeLabel = "Behavioral / Problem Solving (High Bar)",
+                Difficulty = 5,
+                WhyAsked = $"{company.Name} has a very high technical bar (difficulty: {company.DifficultyBar}/10). They want evidence you can handle truly difficult problems.",
+                StrongAnswer = "Describes genuinely complex problem (distributed systems race condition, performance optimization, algorithmic challenge). Shows systematic debugging, hypothesis testing, and persistence.",
+                WeakAnswer = "Describes routine work as 'hard problem', gives up easily, or can't articulate technical depth of the challenge."
             });
         }
 

@@ -1,0 +1,64 @@
+{
+  "goals": [
+    {
+      "title": "Apply to 20 jobs this month",
+      "icon": "📝",
+      "current": 0,
+      "target": 20,
+      "deadline": "2026-03-01T00:00:00Z",
+      "completed": false,
+      "completedDate": "0001-01-01T00:00:00Z",
+      "archived": false
+    },
+    {
+      "title": "Get 5 technical interviews",
+      "icon": "💼",
+      "current": 0,
+      "target": 5,
+      "deadline": "2026-03-31T00:00:00Z",
+      "completed": false,
+      "completedDate": "0001-01-01T00:00:00Z",
+      "archived": false
+    },
+    {
+      "title": "Master 3 new skills",
+      "icon": "📚",
+      "current": 0,
+      "target": 3,
+      "deadline": "2026-04-30T00:00:00Z",
+      "completed": false,
+      "completedDate": "0001-01-01T00:00:00Z",
+      "archived": false
+    },
+    {
+      "title": "Achieve $120k annual salary",
+      "icon": "💰",
+      "current": 0,
+      "target": 120000,
+      "deadline": "2026-06-30T00:00:00Z",
+      "completed": false,
+      "completedDate": "0001-01-01T00:00:00Z",
+      "archived": false
+    },
+    {
+      "title": "Complete 100 interview prep questions",
+      "icon": "🎯",
+      "current": 0,
+      "target": 100,
+      "deadline": "2026-03-15T00:00:00Z",
+      "completed": false,
+      "completedDate": "0001-01-01T00:00:00Z",
+      "archived": false
+    },
+    {
+      "title": "Build 2 portfolio projects",
+      "icon": "🚀",
+      "current": 0,
+      "target": 2,
+      "deadline": "2026-05-31T00:00:00Z",
+      "completed": false,
+      "completedDate": "0001-01-01T00:00:00Z",
+      "archived": false
+    }
+  ]
+}

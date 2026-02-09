@@ -135,6 +135,62 @@ public static class AnalyzeCommand
             }
         }
 
+        // Time-series trend analysis
+        var historicalSnapshots = LoadHistoricalSnapshots();
+        if (historicalSnapshots.Count > 0)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("=== Time-Series Skill Trends ===");
+            Console.ResetColor();
+
+            var previousSnapshot = historicalSnapshots.OrderByDescending(s => s.Date).FirstOrDefault();
+            if (previousSnapshot != null)
+            {
+                var trends = analyzer.IdentifyTrends(previousSnapshot, snapshot);
+                var topTrends = trends.Take(15).ToList();
+
+                Console.WriteLine($"Comparing with snapshot from {previousSnapshot.Date:yyyy-MM-dd} ({previousSnapshot.TotalVacancies} vacancies)\n");
+
+                // Show top growing skills
+                var growing = topTrends.Where(t => t.GrowthRate > 0).Take(10).ToList();
+                if (growing.Count > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine("📈 Top Growing Skills:");
+                    Console.ResetColor();
+                    foreach (var (skill, rate) in growing)
+                    {
+                        var arrow = rate > 50 ? "🚀" : rate > 20 ? "⬆️ " : "↗️ ";
+                        Console.WriteLine($"  {arrow} {skill,-30} +{rate:F1}%");
+                    }
+                }
+
+                // Show top declining skills
+                var declining = trends.Where(t => t.GrowthRate < -10).Take(5).ToList();
+                if (declining.Count > 0)
+                {
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("📉 Declining Skills:");
+                    Console.ResetColor();
+                    foreach (var (skill, rate) in declining)
+                    {
+                        Console.WriteLine($"  ↘️  {skill,-30} {rate:F1}%");
+                    }
+                }
+
+                // Show trend summary across all historical data
+                if (historicalSnapshots.Count >= 2)
+                {
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.WriteLine($"📊 Historical Data: {historicalSnapshots.Count} snapshots from {historicalSnapshots.Min(s => s.Date):yyyy-MM-dd} to {historicalSnapshots.Max(s => s.Date):yyyy-MM-dd}");
+                    Console.ResetColor();
+                }
+            }
+        }
+
         // Save snapshot
         var outputPath = output ?? Path.Combine(
             Program.DataDirectory,
@@ -150,6 +206,40 @@ public static class AnalyzeCommand
         await File.WriteAllTextAsync(outputPath, snapshotJson);
 
         Console.WriteLine($"\nSnapshot saved to: {outputPath}");
+    }
+
+    private static List<MarketSnapshot> LoadHistoricalSnapshots()
+    {
+        if (!Directory.Exists(Program.DataDirectory))
+            return [];
+
+        var snapshots = new List<MarketSnapshot>();
+        var snapshotFiles = Directory.GetFiles(Program.DataDirectory, "snapshot-*.json")
+            .OrderByDescending(f => f)
+            .ToList();
+
+        foreach (var file in snapshotFiles)
+        {
+            try
+            {
+                var json = File.ReadAllText(file);
+                var snapshot = JsonSerializer.Deserialize<MarketSnapshot>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (snapshot != null)
+                {
+                    snapshots.Add(snapshot);
+                }
+            }
+            catch
+            {
+                // Skip invalid snapshot files
+            }
+        }
+
+        return snapshots;
     }
 
     private static string? FindLatestVacanciesFile()

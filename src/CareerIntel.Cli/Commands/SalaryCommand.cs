@@ -147,16 +147,21 @@ public static class SalaryCommand
             Console.ResetColor();
         }
 
-        // Top skills by salary premium
+        // Enhanced Skill Premium Calculator
         if (report.BySkill.Count > 0)
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("\n  Top Skills by Salary Premium:");
+            Console.WriteLine("\n  ═══ SKILL PREMIUM CALCULATOR ═══");
+            Console.ResetColor();
+
+            // 1. Top individual skills by premium
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n  Top Individual Skills:");
             Console.ResetColor();
 
             var topSkills = report.BySkill
                 .OrderByDescending(s => s.SalaryPremiumPercent)
-                .Take(15);
+                .Take(10);
 
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.WriteLine($"  {"Skill",-22} {"Avg Salary",12} {"Premium",9} {"Count",6}");
@@ -177,6 +182,131 @@ public static class SalaryCommand
                 Console.Write($"{skill.SalaryPremiumPercent,+8:+0.0;-0.0}% ");
                 Console.ResetColor();
                 Console.WriteLine($"{skill.VacancyCount,5}");
+            }
+
+            // 2. Skill combinations with highest premiums
+            var skillCombos = CalculateSkillCombinationPremiums(vacancies, report);
+            if (skillCombos.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n  Top Skill Combinations (Stacking Bonus):");
+                Console.ResetColor();
+
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  {"Combination",-35} {"Avg",12} {"Premium",9} {"Jobs",5}");
+                Console.WriteLine($"  {new string('─', 65)}");
+                Console.ResetColor();
+
+                foreach (var combo in skillCombos.Take(5))
+                {
+                    var premColor = combo.Premium switch
+                    {
+                        > 30 => ConsoleColor.Green,
+                        > 15 => ConsoleColor.Yellow,
+                        _ => ConsoleColor.White
+                    };
+                    Console.Write($"  {combo.Skills,-35} ");
+                    Console.Write($"${combo.AverageSalary,11:N0} ");
+                    Console.ForegroundColor = premColor;
+                    Console.Write($"{combo.Premium,+8:+0.0}% ");
+                    Console.ResetColor();
+                    Console.WriteLine($"{combo.Count,4}");
+                }
+            }
+
+            // 3. Demand-adjusted premium scores (sweet spot analysis)
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n  Sweet Spot Analysis (Premium × Demand):");
+            Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine("  (High score = good premium with many opportunities)");
+            Console.ResetColor();
+
+            var sweetSpot = report.BySkill
+                .Select(s => new
+                {
+                    s.Skill,
+                    s.MedianSalary,
+                    s.SalaryPremiumPercent,
+                    s.VacancyCount,
+                    Score = s.SalaryPremiumPercent * Math.Log10(s.VacancyCount + 1) * 10
+                })
+                .OrderByDescending(s => s.Score)
+                .Take(10);
+
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine($"  {"Skill",-22} {"Premium",9} {"Jobs",6} {"Score",8}");
+            Console.WriteLine($"  {new string('─', 50)}");
+            Console.ResetColor();
+
+            foreach (var skill in sweetSpot)
+            {
+                var scoreColor = skill.Score switch
+                {
+                    > 100 => ConsoleColor.Green,
+                    > 50 => ConsoleColor.Yellow,
+                    _ => ConsoleColor.White
+                };
+                Console.Write($"  {skill.Skill,-22} ");
+                Console.ForegroundColor = skill.SalaryPremiumPercent > 0 ? ConsoleColor.Green : ConsoleColor.Red;
+                Console.Write($"{skill.SalaryPremiumPercent,+8:+0.0}% ");
+                Console.ResetColor();
+                Console.Write($"{skill.VacancyCount,5} ");
+                Console.ForegroundColor = scoreColor;
+                Console.WriteLine($"{skill.Score,7:F0}");
+                Console.ResetColor();
+            }
+
+            // 4. Personalized recommendations (if profile exists)
+            if (profile != null && profile.Skills.Count > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n  💡 Personalized Learning ROI:");
+                Console.ResetColor();
+
+                var userSkills = new HashSet<string>(
+                    profile.Skills.Select(s => s.SkillName),
+                    StringComparer.OrdinalIgnoreCase);
+
+                var recommendations = report.BySkill
+                    .Where(s => !userSkills.Contains(s.Skill))
+                    .Where(s => s.SalaryPremiumPercent > 5 && s.VacancyCount >= 3)
+                    .Select(s => new
+                    {
+                        s.Skill,
+                        s.SalaryPremiumPercent,
+                        s.MedianSalary,
+                        s.VacancyCount,
+                        ROI = s.SalaryPremiumPercent * Math.Log10(s.VacancyCount + 1) * 5
+                    })
+                    .OrderByDescending(s => s.ROI)
+                    .Take(5);
+
+                if (recommendations.Any())
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine("  (Skills you don't have yet with best ROI)");
+                    Console.WriteLine();
+                    Console.ResetColor();
+
+                    foreach (var rec in recommendations)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.Write($"  → {rec.Skill}");
+                        Console.ResetColor();
+                        Console.Write($": +{rec.SalaryPremiumPercent:F0}% premium, ");
+                        Console.Write($"{rec.VacancyCount} jobs, ");
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"ROI Score: {rec.ROI:F0}");
+                        Console.ResetColor();
+                    }
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("  ✓ You already have the most valuable skills!");
+                    Console.ResetColor();
+                }
             }
         }
 
@@ -243,5 +373,83 @@ public static class SalaryCommand
         return Directory.GetFiles(Program.DataDirectory, "vacancies-*.json")
             .OrderByDescending(f => f)
             .FirstOrDefault();
+    }
+
+    private static List<SkillComboPremium> CalculateSkillCombinationPremiums(
+        List<JobVacancy> vacancies,
+        SalaryReport report)
+    {
+        var combos = new List<SkillComboPremium>();
+
+        // Find vacancies with salary data
+        var withSalary = vacancies
+            .Where(v => v.SalaryMin.HasValue && v.SalaryMax.HasValue)
+            .ToList();
+
+        if (withSalary.Count == 0)
+            return combos;
+
+        var baseline = (decimal)report.MedianSalaryMax;
+        if (baseline == 0)
+            return combos;
+
+        // Group by skill pairs that appear together
+        var skillPairs = new Dictionary<string, (List<decimal> Salaries, int Count)>();
+
+        foreach (var vacancy in withSalary)
+        {
+            var skills = vacancy.RequiredSkills
+                .Concat(vacancy.PreferredSkills)
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(s => s)
+                .ToList();
+
+            // Get all pairs
+            for (int i = 0; i < skills.Count; i++)
+            {
+                for (int j = i + 1; j < skills.Count && j < i + 3; j++) // Limit to avoid explosion
+                {
+                    var combo = $"{skills[i]} + {skills[j]}";
+                    var avgSalary = (vacancy.SalaryMin!.Value + vacancy.SalaryMax!.Value) / 2m;
+
+                    if (!skillPairs.ContainsKey(combo))
+                    {
+                        skillPairs[combo] = (new List<decimal>(), 0);
+                    }
+
+                    var existing = skillPairs[combo];
+                    existing.Salaries.Add(avgSalary);
+                    existing.Count++;
+                    skillPairs[combo] = existing;
+                }
+            }
+        }
+
+        // Calculate premiums for combinations that appear frequently enough
+        foreach (var (combo, (salaries, count)) in skillPairs.Where(kv => kv.Value.Count >= 3))
+        {
+            var avgSalary = salaries.OrderBy(s => s).Skip(salaries.Count / 2).First(); // Median
+            var premium = (double)(avgSalary - baseline) / (double)baseline * 100;
+
+            combos.Add(new SkillComboPremium
+            {
+                Skills = combo,
+                AverageSalary = avgSalary,
+                Premium = premium,
+                Count = count
+            });
+        }
+
+        return combos.OrderByDescending(c => c.Premium).ToList();
+    }
+
+    private sealed class SkillComboPremium
+    {
+        public string Skills { get; set; } = string.Empty;
+        public decimal AverageSalary { get; set; }
+        public double Premium { get; set; }
+        public int Count { get; set; }
     }
 }
