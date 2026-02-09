@@ -1,6 +1,4 @@
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
 using CareerIntel.Core.Enums;
 using CareerIntel.Core.Models;
@@ -9,285 +7,293 @@ namespace CareerIntel.Scrapers;
 
 /// <summary>
 /// Scrapes job listings from We Work Remotely — one of the largest remote work communities.
-/// Fetches from both the general remote jobs endpoint and the back-end programming category
-/// to maximize .NET-relevant results.
+/// Switched to HTML scraping after JSON API deprecation (returns 406 Not Acceptable).
 /// </summary>
 public sealed class WeWorkRemotelyScraper(HttpClient httpClient, ILogger<WeWorkRemotelyScraper> logger, ScrapingCompliance? compliance = null)
     : BaseScraper(httpClient, logger, compliance)
 {
-    private const string AllJobsApiUrl = "https://weworkremotely.com/remote-jobs.json";
-    private const string BackEndApiUrl = "https://weworkremotely.com/categories/remote-back-end-programming-jobs.json";
+    private const string BaseUrl = "https://weworkremotely.com";
+
+    // Search URLs for back-end/programming jobs
+    private static readonly string[] SearchUrls =
+    [
+        "https://weworkremotely.com/remote-jobs/search?term=.net",
+        "https://weworkremotely.com/categories/remote-back-end-programming-jobs",
+        "https://weworkremotely.com/categories/remote-full-stack-programming-jobs"
+    ];
 
     public override string PlatformName => "WeWorkRemotely";
 
     protected override TimeSpan RequestDelay => TimeSpan.FromSeconds(3);
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
-
-    private static readonly string[] NetKeywords =
-    [
-        ".net", "c#", "dotnet", "asp.net", "entity framework", "blazor",
-        "maui", "xamarin", "wpf", "winforms", "ef core", "efcore"
-    ];
 
     public override async Task<IReadOnlyList<JobVacancy>> ScrapeAsync(
         string keywords = ".NET",
         int maxPages = 5,
         CancellationToken cancellationToken = default)
     {
-        var allJobs = new Dictionary<string, WwrJob>();
+        var allVacancies = new Dictionary<string, JobVacancy>();
 
-        // Fetch from both endpoints to maximize coverage
-        var generalJobs = await FetchJobsFromEndpointAsync(AllJobsApiUrl, cancellationToken);
-        var backEndJobs = await FetchJobsFromEndpointAsync(BackEndApiUrl, cancellationToken);
-
-        // Deduplicate by job ID, preferring the first occurrence
-        foreach (var job in generalJobs.Concat(backEndJobs))
+        foreach (var searchUrl in SearchUrls)
         {
-            var key = job.Id?.ToString() ?? job.Url ?? Guid.NewGuid().ToString();
-            allJobs.TryAdd(key, job);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            logger.LogInformation("[WeWorkRemotely] Scraping {Url}", searchUrl);
+
+            var document = await FetchPageAsync(searchUrl, cancellationToken);
+            if (document is null)
+            {
+                logger.LogWarning("[WeWorkRemotely] Failed to fetch {Url}", searchUrl);
+                continue;
+            }
+
+            // Try multiple selector patterns to find job listings
+            var jobCards = SelectNodes(document, "//li[contains(@class, 'feature')]")
+                ?? SelectNodes(document, "//section[@class='jobs']//li")
+                ?? SelectNodes(document, "//article[contains(@class, 'job')]")
+                ?? SelectNodes(document, "//a[contains(@href, '/remote-jobs/')]");
+
+            if (jobCards is null or { Count: 0 })
+            {
+                logger.LogWarning("[WeWorkRemotely] No job cards found for {Url}. Trying alternative selectors...", searchUrl);
+
+                // Try broader selectors
+                jobCards = SelectNodes(document, "//ul[contains(@class, 'jobs')]//li")
+                    ?? SelectNodes(document, "//div[contains(@class, 'job')]");
+
+                if (jobCards is null or { Count: 0 })
+                {
+                    logger.LogWarning("[WeWorkRemotely] Still no job cards found for {Url}", searchUrl);
+                    continue;
+                }
+            }
+
+            logger.LogInformation("[WeWorkRemotely] Found {Count} job cards", jobCards.Count);
+
+            foreach (var card in jobCards)
+            {
+                var vacancy = ParseJobCard(card);
+                if (vacancy is not null && !allVacancies.ContainsKey(vacancy.Id))
+                {
+                    allVacancies[vacancy.Id] = vacancy;
+                }
+            }
         }
 
-        if (allJobs.Count == 0) return [];
-
-        // Filter to .NET-relevant jobs and limit results based on maxPages (25 per page)
-        return allJobs.Values
-            .Where(IsNetRelated)
-            .Take(maxPages * 25)
-            .Select(MapToVacancy)
-            .ToList();
+        logger.LogInformation("[WeWorkRemotely] Scraped {Count} unique vacancies total", allVacancies.Count);
+        return allVacancies.Values.ToList();
     }
 
     public override async Task<JobVacancy?> ScrapeDetailAsync(
         string url, CancellationToken cancellationToken = default)
     {
-        // The JSON API provides full job data in the listing response;
-        // no separate detail endpoint is needed.
-        return null;
+        var document = await FetchPageAsync(url, cancellationToken);
+        if (document is null) return null;
+
+        return ParseDetailPage(document, url);
     }
 
-    private async Task<List<WwrJob>> FetchJobsFromEndpointAsync(
-        string apiUrl, CancellationToken cancellationToken)
+    private JobVacancy? ParseJobCard(HtmlNode card)
     {
         try
         {
-            await Task.Delay(RequestDelay, cancellationToken);
+            // Find the job link
+            var linkNode = card.SelectSingleNode(".//a[contains(@href, '/remote-jobs/')]")
+                ?? card.SelectSingleNode(".//a[@href]");
 
-            logger.LogDebug("[WeWorkRemotely] Fetching from: {Url}", apiUrl);
-
-            // Add comprehensive headers to avoid 406 Not Acceptable
-            using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-            request.Headers.Add("Accept", "application/json, text/html, */*");
-            request.Headers.Add("Accept-Language", "en-US,en;q=0.9");
-            request.Headers.Add("Accept-Encoding", "gzip, deflate, br");
-            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36");
-            request.Headers.Add("Referer", "https://weworkremotely.com/");
-            request.Headers.Add("DNT", "1");
-            request.Headers.Add("Connection", "keep-alive");
-            request.Headers.Add("Upgrade-Insecure-Requests", "1");
-
-            var response = await httpClient.SendAsync(request, cancellationToken);
-
-            logger.LogInformation("[WeWorkRemotely] Response status: {StatusCode}, ContentType: {ContentType}",
-                response.StatusCode, response.Content.Headers.ContentType?.MediaType ?? "unknown");
-
-            if (!response.IsSuccessStatusCode)
+            if (linkNode is null)
             {
-                logger.LogWarning("[WeWorkRemotely] API returned {StatusCode} for {Url}. The JSON API may no longer be publicly accessible.",
-                    response.StatusCode, apiUrl);
-                return [];
+                logger.LogDebug("[WeWorkRemotely] Job card has no link, skipping");
+                return null;
             }
 
-            // Read response as string first to inspect format
-            var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+            var detailUrl = ExtractAttribute(linkNode, "href");
 
-            if (string.IsNullOrWhiteSpace(responseText))
+            if (string.IsNullOrEmpty(detailUrl))
             {
-                logger.LogWarning("[WeWorkRemotely] Empty response from {Url}", apiUrl);
-                return [];
+                logger.LogDebug("[WeWorkRemotely] Job card has no link URL, skipping");
+                return null;
             }
 
-            logger.LogDebug("[WeWorkRemotely] Response length: {Length} bytes", responseText.Length);
+            var fullUrl = detailUrl.StartsWith("http") ? detailUrl : $"{BaseUrl}{detailUrl}";
 
-            var result = JsonSerializer.Deserialize<WwrApiResponse>(responseText, JsonOptions);
+            // Extract job ID from URL (e.g., /remote-jobs/123456/title-slug)
+            var urlParts = detailUrl.Split('/');
+            var jobId = urlParts.FirstOrDefault(p => int.TryParse(p, out _)) ?? fullUrl.GetHashCode().ToString();
 
-            if (result?.Jobs is null or { Count: 0 })
+            // Extract title
+            var titleNode = card.SelectSingleNode(".//span[@class='title']")
+                ?? card.SelectSingleNode(".//h2")
+                ?? card.SelectSingleNode(".//*[contains(@class, 'title')]")
+                ?? linkNode;
+
+            var title = ExtractText(titleNode);
+
+            if (string.IsNullOrWhiteSpace(title))
             {
-                logger.LogWarning("[WeWorkRemotely] No jobs found in response from {Url}", apiUrl);
-                return [];
+                logger.LogDebug("[WeWorkRemotely] Job card has no title, skipping. URL: {Url}", fullUrl);
+                return null;
             }
 
-            logger.LogInformation("[WeWorkRemotely] Successfully fetched {Count} jobs from {Url}",
-                result.Jobs.Count, apiUrl);
+            // Extract company
+            var companyNode = card.SelectSingleNode(".//span[@class='company']")
+                ?? card.SelectSingleNode(".//*[contains(@class, 'company')]");
+            var company = ExtractText(companyNode);
 
-            return result.Jobs;
+            // Extract region/location
+            var regionNode = card.SelectSingleNode(".//span[@class='region']")
+                ?? card.SelectSingleNode(".//*[contains(@class, 'region')]");
+            var region = ExtractText(regionNode);
+
+            // Extract tags/skills
+            var tagNodes = card.SelectNodes(".//*[contains(@class, 'tag')]")
+                ?? card.SelectNodes(".//span[contains(@class, 'label')]");
+
+            var skills = new List<string>();
+            if (tagNodes is not null)
+            {
+                foreach (var tagNode in tagNodes)
+                {
+                    var skill = ExtractText(tagNode);
+                    if (!string.IsNullOrWhiteSpace(skill) && skill.Length < 50)
+                        skills.Add(skill);
+                }
+            }
+
+            return new JobVacancy
+            {
+                Id = GenerateId(jobId),
+                Title = title,
+                Company = company,
+                Url = fullUrl,
+                City = string.Empty,
+                Country = ParseRegion(region),
+                SalaryMin = null,
+                SalaryMax = null,
+                SalaryCurrency = "USD",
+                RemotePolicy = RemotePolicy.FullyRemote, // WeWorkRemotely is remote-only
+                SeniorityLevel = DetectSeniority(title),
+                EngagementType = DetectEngagementType(title),
+                GeoRestrictions = DetectGeoRestrictions(title + " " + region),
+                RequiredSkills = skills,
+                SourcePlatform = PlatformName.ToLowerInvariant(),
+                ScrapedDate = DateTimeOffset.UtcNow
+            };
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
-            logger.LogError(ex, "[WeWorkRemotely] HTTP request failed for {Url}. The site may be blocking automated requests or the API endpoint may have changed.", apiUrl);
-            return [];
-        }
-        catch (JsonException ex)
-        {
-            logger.LogError(ex, "[WeWorkRemotely] JSON parsing failed for {Url}. The API format may have changed or the endpoint may now return HTML instead of JSON.", apiUrl);
-            return [];
+            logger.LogDebug(ex, "[WeWorkRemotely] Failed to parse job card");
+            return null;
         }
     }
 
-    private JobVacancy MapToVacancy(WwrJob job)
+    private JobVacancy? ParseDetailPage(HtmlDocument document, string url)
     {
-        var title = job.Title ?? string.Empty;
-        var description = job.Description ?? string.Empty;
-
-        return new JobVacancy
+        try
         {
-            Id = GenerateId(job.Id?.ToString() ?? Guid.NewGuid().ToString()),
-            Title = title,
-            Company = job.CompanyName ?? string.Empty,
-            City = string.Empty,
-            Country = "Remote",
-            Url = !string.IsNullOrEmpty(job.Url)
-                ? job.Url
-                : !string.IsNullOrEmpty(job.SourceUrl) ? job.SourceUrl : string.Empty,
-            Description = description,
-            SalaryMin = null,
-            SalaryMax = null,
-            SalaryCurrency = "USD",
-            RemotePolicy = RemotePolicy.FullyRemote,
-            SeniorityLevel = DetectSeniority(title),
-            EngagementType = DetectEngagementType(description),
-            GeoRestrictions = DetectGeoRestrictions(title + " " + description),
-            RequiredSkills = ExtractSkillsFromDescription(description),
-            PostedDate = DateTimeOffset.TryParse(job.PublishedAt, out var parsed) ? parsed : DateTimeOffset.MinValue,
-            SourcePlatform = PlatformName.ToLowerInvariant(),
-            ScrapedDate = DateTimeOffset.UtcNow
-        };
+            var urlParts = url.Split('/');
+            var jobId = urlParts.FirstOrDefault(p => int.TryParse(p, out _)) ?? url.GetHashCode().ToString();
+
+            // Extract title
+            var titleNode = SelectSingleNode(document, "//h1")
+                ?? SelectSingleNode(document, "//h2[@class='title']");
+            var title = ExtractText(titleNode);
+
+            if (string.IsNullOrWhiteSpace(title)) return null;
+
+            // Extract company
+            var companyNode = SelectSingleNode(document, "//h2[contains(@class, 'company')]")
+                ?? SelectSingleNode(document, "//*[contains(@class, 'company-card')]//h2")
+                ?? SelectSingleNode(document, "//a[contains(@href, '/company/')]");
+            var company = ExtractText(companyNode);
+
+            // Extract description
+            var descriptionNode = SelectSingleNode(document, "//div[contains(@class, 'listing-container')]")
+                ?? SelectSingleNode(document, "//div[contains(@class, 'job-description')]")
+                ?? SelectSingleNode(document, "//article");
+            var description = ExtractText(descriptionNode);
+
+            // Extract region
+            var regionNode = SelectSingleNode(document, "//*[contains(@class, 'region')]");
+            var region = ExtractText(regionNode);
+
+            // Extract tags
+            var tagNodes = SelectNodes(document, "//*[contains(@class, 'tag')]")
+                ?? SelectNodes(document, "//span[contains(@class, 'label')]");
+            var skills = new List<string>();
+            if (tagNodes is not null)
+            {
+                foreach (var tagNode in tagNodes)
+                {
+                    var skill = ExtractText(tagNode);
+                    if (!string.IsNullOrWhiteSpace(skill) && skill.Length < 50)
+                        skills.Add(skill);
+                }
+            }
+
+            // Try to extract salary from description
+            var (salaryMin, salaryMax, currency) = ParseSalaryRange(description);
+
+            return new JobVacancy
+            {
+                Id = GenerateId(jobId),
+                Title = title,
+                Company = company,
+                Description = description,
+                Url = url,
+                City = string.Empty,
+                Country = ParseRegion(region),
+                SalaryMin = salaryMin,
+                SalaryMax = salaryMax,
+                SalaryCurrency = currency,
+                RemotePolicy = RemotePolicy.FullyRemote,
+                SeniorityLevel = DetectSeniority(title + " " + description),
+                EngagementType = DetectEngagementType(description),
+                GeoRestrictions = DetectGeoRestrictions(description),
+                RequiredSkills = skills,
+                SourcePlatform = PlatformName.ToLowerInvariant(),
+                ScrapedDate = DateTimeOffset.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[WeWorkRemotely] Failed to parse detail page: {Url}", url);
+            return null;
+        }
     }
 
-    private static bool IsNetRelated(WwrJob job)
+    private static string ParseRegion(string? region)
     {
-        var title = job.Title?.ToLowerInvariant() ?? "";
-        var description = job.Description?.ToLowerInvariant() ?? "";
+        if (string.IsNullOrWhiteSpace(region))
+            return "Worldwide";
 
-        return NetKeywords.Any(kw =>
-            title.Contains(kw) || description.Contains(kw));
+        var lower = region.ToLowerInvariant();
+
+        if (lower.Contains("anywhere") || lower.Contains("worldwide"))
+            return "Worldwide";
+
+        if (lower.Contains("usa") || lower.Contains("united states") || lower.Contains("us only"))
+            return "United States";
+
+        if (lower.Contains("europe") || lower.Contains("eu"))
+            return "Europe";
+
+        return region.Trim();
     }
 
-    private static SeniorityLevel DetectSeniority(string? title)
+    private static SeniorityLevel DetectSeniority(string text)
     {
-        if (string.IsNullOrWhiteSpace(title))
-            return SeniorityLevel.Unknown;
+        if (string.IsNullOrWhiteSpace(text)) return SeniorityLevel.Unknown;
 
-        var lower = title.ToLowerInvariant();
+        var lower = text.ToLowerInvariant();
 
-        if (lower.Contains("principal"))
-            return SeniorityLevel.Principal;
-        if (lower.Contains("architect"))
-            return SeniorityLevel.Architect;
-        if (lower.Contains("lead") || lower.Contains("team lead") || lower.Contains("tech lead"))
-            return SeniorityLevel.Lead;
-        if (lower.Contains("senior") || lower.Contains("sr.") || lower.Contains("sr "))
-            return SeniorityLevel.Senior;
-        if (lower.Contains("middle") || lower.Contains("mid-level") || lower.Contains("mid level"))
-            return SeniorityLevel.Middle;
-        if (lower.Contains("junior") || lower.Contains("jr.") || lower.Contains("jr "))
-            return SeniorityLevel.Junior;
-        if (lower.Contains("intern") || lower.Contains("trainee"))
-            return SeniorityLevel.Intern;
+        if (lower.Contains("principal") || lower.Contains("staff")) return SeniorityLevel.Principal;
+        if (lower.Contains("architect")) return SeniorityLevel.Architect;
+        if (lower.Contains("lead") || lower.Contains("tech lead")) return SeniorityLevel.Lead;
+        if (lower.Contains("senior") || lower.Contains("sr.")) return SeniorityLevel.Senior;
+        if (lower.Contains("mid") || lower.Contains("regular")) return SeniorityLevel.Middle;
+        if (lower.Contains("junior") || lower.Contains("jr.")) return SeniorityLevel.Junior;
+        if (lower.Contains("intern")) return SeniorityLevel.Intern;
 
         return SeniorityLevel.Unknown;
-    }
-
-    /// <summary>
-    /// Extracts recognizable technology skills from the job description text.
-    /// Since WeWorkRemotely does not provide structured tags, we scan for common keywords.
-    /// </summary>
-    private static List<string> ExtractSkillsFromDescription(string description)
-    {
-        if (string.IsNullOrWhiteSpace(description))
-            return [];
-
-        var lower = description.ToLowerInvariant();
-        var skills = new List<string>();
-
-        var knownSkills = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["c#"] = "C#",
-            [".net"] = ".NET",
-            ["asp.net"] = "ASP.NET",
-            ["entity framework"] = "Entity Framework",
-            ["ef core"] = "EF Core",
-            ["blazor"] = "Blazor",
-            ["azure"] = "Azure",
-            ["aws"] = "AWS",
-            ["docker"] = "Docker",
-            ["kubernetes"] = "Kubernetes",
-            ["sql"] = "SQL",
-            ["postgresql"] = "PostgreSQL",
-            ["mongodb"] = "MongoDB",
-            ["redis"] = "Redis",
-            ["rabbitmq"] = "RabbitMQ",
-            ["grpc"] = "gRPC",
-            ["graphql"] = "GraphQL",
-            ["react"] = "React",
-            ["angular"] = "Angular",
-            ["typescript"] = "TypeScript",
-            ["javascript"] = "JavaScript",
-            ["ci/cd"] = "CI/CD",
-            ["terraform"] = "Terraform",
-            ["microservices"] = "Microservices",
-            ["rest api"] = "REST API",
-            ["signalr"] = "SignalR",
-            ["xamarin"] = "Xamarin",
-            ["maui"] = "MAUI",
-            ["wpf"] = "WPF"
-        };
-
-        foreach (var (keyword, displayName) in knownSkills)
-        {
-            if (lower.Contains(keyword.ToLowerInvariant()))
-                skills.Add(displayName);
-        }
-
-        return skills.Distinct().ToList();
-    }
-
-    // JSON models for WeWorkRemotely API response
-
-    private sealed class WwrApiResponse
-    {
-        [JsonPropertyName("jobs")]
-        public List<WwrJob>? Jobs { get; set; }
-    }
-
-    private sealed class WwrJob
-    {
-        [JsonPropertyName("id")]
-        public long? Id { get; set; }
-
-        [JsonPropertyName("title")]
-        public string? Title { get; set; }
-
-        [JsonPropertyName("company_name")]
-        public string? CompanyName { get; set; }
-
-        [JsonPropertyName("url")]
-        public string? Url { get; set; }
-
-        [JsonPropertyName("description")]
-        public string? Description { get; set; }
-
-        [JsonPropertyName("category_name")]
-        public string? CategoryName { get; set; }
-
-        [JsonPropertyName("source_url")]
-        public string? SourceUrl { get; set; }
-
-        [JsonPropertyName("published_at")]
-        public string? PublishedAt { get; set; }
     }
 }
