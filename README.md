@@ -396,31 +396,32 @@ This project includes comprehensive market research:
 
 ### Scraper Status (Last Tested: Feb 9, 2026)
 
-**✅ Working Scrapers (4/11)** - 176 total vacancies tested
+**✅ Working Scrapers (6/11)** - 253 total vacancies tested ⬆️ 44% increase!
 - **DouScraper** ✅ - 100 vacancies found (HTML parsing)
+- **DjinniScraper** ✅ - 75 vacancies found (HTML parsing) **FIXED!**
 - **NoFluffJobsScraper** ✅ - 65 vacancies found (HTML parsing)
 - **HimalayasScraper** ✅ - 6 vacancies found (JSON API, fixed deserialization)
 - **HackerNewsScraper** ✅ - 5 vacancies found (Firebase API)
+- **RemoteOkScraper** ✅ - 2 vacancies found (JSON API) **FIXED!**
 
-**❌ Broken Scrapers (7/11)** - Require manual fixes
-- **DjinniScraper** ❌ - CSS selectors outdated (0 results, HTML structure changed)
+**❌ Broken Scrapers (5/11)** - Require manual investigation
 - **JustJoinItScraper** ❌ - All 4 API endpoints return 404 (API deprecated)
-- **RemoteOkScraper** ❌ - Returns 200 but deserializes 0 jobs (format changed)
 - **WeWorkRemotelyScraper** ❌ - Returns 406 Not Acceptable (public API removed)
 - **ToptalScraper** ❌ - Returns 403 Forbidden (blocks automated requests)
 - **LinkedInScraper** ❌ - Blocked by robots.txt (requires authentication)
-- **JobicyScraper** ⚠️ - API works but returns 0 jobs (tag search unsuccessful)
+- **JobicyScraper** ❌ - API broken/changed (JSON parsing errors on all tags)
 
-**Success Rate:** 36% (4/11 working)
+**Success Rate:** 55% (6/11 working) - **Improved from 36%!**
 
-**Recent Improvements:**
-- Enhanced error handling and logging across all scrapers
-- Added fallback API endpoints for JustJoinIt (still failing)
-- Improved request headers for WeWorkRemotely (still 406)
-- Multiple CSS selector fallbacks for Toptal and LinkedIn
-- Better diagnostic logging to identify API/HTML changes
+**Recent Fixes:**
+- **DjinniScraper** ✅ - Fixed by adding more flexible HTML selector fallbacks + diagnostic logging
+- **RemoteOkScraper** ✅ - Fixed by changing ID field from `long?` to `string` (API format change)
+- Enhanced diagnostic logging to inspect JSON responses and HTML structure
+- Better error messages with response previews for debugging
 
-**Workaround:** Use the working scrapers (DOU, NoFluffJobs, Himalayas, HackerNews) for reliable data. The 4 working scrapers provide 176 vacancies per scan. Contributions welcome to fix broken scrapers! See [Contributing](#contributing) section.
+**Data Quality:** The 6 working scrapers provide **253 vacancies** per scan, covering major .NET job markets (Ukraine, Poland, Europe, Remote). This is sufficient for production use!
+
+**Contributions Welcome:** The remaining 5 broken scrapers need manual website inspection to update API endpoints and HTML selectors. See [Contributing](#contributing) section.
 
 ### Other Limitations
 
