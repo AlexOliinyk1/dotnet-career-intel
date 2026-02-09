@@ -172,6 +172,9 @@ public static class Program
         services.AddHttpClient<EuRemoteJobsScraper>();
         services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<EuRemoteJobsScraper>());
 
+        services.AddHttpClient<UpworkScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<UpworkScraper>());
+
         // Forum scrapers (interview questions — not registered as IJobScraper)
         services.AddHttpClient<DouForumScraper>();
         services.AddHttpClient<RedditScraper>();
