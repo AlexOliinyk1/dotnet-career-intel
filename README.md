@@ -12,7 +12,7 @@
 
 CareerIntel is a comprehensive CLI tool that helps .NET developers and architects:
 
-- 🔍 **Scrape job vacancies** from 11+ platforms (Djinni, DOU, LinkedIn, JustJoin.it, etc.)
+- 🔍 **Scrape job vacancies** from 15 platforms (Djinni, DOU, Work.ua, Arc.dev, Built In, etc.)
 - 📊 **Analyze market trends** - skill demand, salary intelligence, career paths
 - 🎯 **Match opportunities** against your profile with AI-powered scoring
 - 📝 **Generate tailored resumes** and cover letters optimized for ATS
@@ -87,10 +87,10 @@ career-intel salary
 ```
 
 **Supported Platforms:**
-- 🇺🇦 Djinni.co, DOU.ua
+- 🇺🇦 Djinni.co, DOU.ua, Work.ua
 - 🇵🇱 JustJoin.it, NoFluffJobs
-- 🌍 LinkedIn, RemoteOk, WeWorkRemotely
-- 💼 HackerNews (Who is Hiring), Himalayas, Jobicy, Toptal
+- 🌍 LinkedIn, RemoteOk, WeWorkRemotely, Arc.dev, Wellfound
+- 💼 HackerNews (Who is Hiring), Himalayas, Jobicy, Toptal, Built In
 
 ### 🎯 **Smart Matching & Scoring**
 
@@ -396,22 +396,26 @@ This project includes comprehensive market research:
 
 ### Scraper Status (Last Tested: Feb 9, 2026)
 
-**✅ Working Scrapers (6/11)** - 253 total vacancies tested ⬆️ 44% increase!
+**✅ Working Scrapers (9/15)** - 277 total vacancies tested ⬆️ 9% increase!
 - **DouScraper** ✅ - 100 vacancies found (HTML parsing)
 - **DjinniScraper** ✅ - 75 vacancies found (HTML parsing) **FIXED!**
 - **NoFluffJobsScraper** ✅ - 65 vacancies found (HTML parsing)
+- **WorkUaScraper** ✅ - 21 vacancies found (HTML parsing) **NEW!**
 - **HimalayasScraper** ✅ - 6 vacancies found (JSON API, fixed deserialization)
 - **HackerNewsScraper** ✅ - 5 vacancies found (Firebase API)
 - **RemoteOkScraper** ✅ - 2 vacancies found (JSON API) **FIXED!**
+- **BuiltInScraper** ✅ - 2 vacancies found (HTML parsing) **NEW!**
+- **ArcDevScraper** ✅ - 1 vacancy found (HTML parsing) **NEW!**
 
-**❌ Broken Scrapers (5/11)** - Require manual investigation
+**❌ Broken Scrapers (6/15)** - Require manual investigation
 - **JustJoinItScraper** ❌ - All 4 API endpoints return 404 (API deprecated)
 - **WeWorkRemotelyScraper** ❌ - Returns 406 Not Acceptable (public API removed)
 - **ToptalScraper** ❌ - Returns 403 Forbidden (blocks automated requests)
+- **WellfoundScraper** ❌ - Returns 403 Forbidden (blocks automated requests) **NEW**
 - **LinkedInScraper** ❌ - Blocked by robots.txt (requires authentication)
 - **JobicyScraper** ❌ - API broken/changed (JSON parsing errors on all tags)
 
-**Success Rate:** 55% (6/11 working) - **Improved from 36%!**
+**Success Rate:** 60% (9/15 working) - **Improved from 55%!**
 
 **Recent Fixes:**
 - **DjinniScraper** ✅ - Fixed by adding more flexible HTML selector fallbacks + diagnostic logging
@@ -419,7 +423,13 @@ This project includes comprehensive market research:
 - Enhanced diagnostic logging to inspect JSON responses and HTML structure
 - Better error messages with response previews for debugging
 
-**Data Quality:** The 6 working scrapers provide **253 vacancies** per scan, covering major .NET job markets (Ukraine, Poland, Europe, Remote). This is sufficient for production use!
+**New Scrapers Added:**
+- **WorkUaScraper** ✅ - Ukraine's largest job board with 92,000+ jobs, supports English/Ukrainian
+- **BuiltInScraper** ✅ - Tech-focused job board with clean HTML structure
+- **ArcDevScraper** ✅ - Platform for pre-vetted remote developers
+- **WellfoundScraper** ❌ - Wellfound (AngelList) - blocked by 403 Forbidden
+
+**Data Quality:** The 9 working scrapers provide **277 vacancies** per scan, covering major .NET job markets (Ukraine, Poland, Europe, Remote). This is sufficient for production use!
 
 **Contributions Welcome:** The remaining 5 broken scrapers need manual website inspection to update API endpoints and HTML selectors. See [Contributing](#contributing) section.
 

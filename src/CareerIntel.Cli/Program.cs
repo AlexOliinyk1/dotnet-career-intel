@@ -142,6 +142,18 @@ public static class Program
         services.AddHttpClient<ToptalScraper>();
         services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<ToptalScraper>());
 
+        services.AddHttpClient<ArcDevScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<ArcDevScraper>());
+
+        services.AddHttpClient<WorkUaScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<WorkUaScraper>());
+
+        services.AddHttpClient<WellfoundScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<WellfoundScraper>());
+
+        services.AddHttpClient<BuiltInScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<BuiltInScraper>());
+
         // Forum scrapers (interview questions — not registered as IJobScraper)
         services.AddHttpClient<DouForumScraper>();
         services.AddHttpClient<RedditScraper>();

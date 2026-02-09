@@ -226,6 +226,33 @@ public abstract class BaseScraper : IJobScraper
     }
 
     /// <summary>
+    /// Detects remote work policy from vacancy text.
+    /// </summary>
+    protected static Core.Enums.RemotePolicy DetectRemotePolicy(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return Core.Enums.RemotePolicy.Unknown;
+
+        var lower = text.ToLowerInvariant();
+
+        if (lower.Contains("fully remote") || lower.Contains("full remote") ||
+            lower.Contains("100% remote") || lower.Contains("remote only"))
+            return Core.Enums.RemotePolicy.FullyRemote;
+
+        if (lower.Contains("hybrid"))
+            return Core.Enums.RemotePolicy.Hybrid;
+
+        if (lower.Contains("remote"))
+            return Core.Enums.RemotePolicy.RemoteFriendly;
+
+        if (lower.Contains("office") || lower.Contains("on-site") ||
+            lower.Contains("onsite") || lower.Contains("on site"))
+            return Core.Enums.RemotePolicy.OnSite;
+
+        return Core.Enums.RemotePolicy.Unknown;
+    }
+
+    /// <summary>
     /// Detects geographic restrictions from vacancy text that would prevent
     /// remote work from Ukraine.
     /// </summary>
