@@ -154,6 +154,24 @@ public static class Program
         services.AddHttpClient<BuiltInScraper>();
         services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<BuiltInScraper>());
 
+        services.AddHttpClient<DiceScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<DiceScraper>());
+
+        services.AddHttpClient<RemotiveScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<RemotiveScraper>());
+
+        services.AddHttpClient<JustRemoteScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<JustRemoteScraper>());
+
+        services.AddHttpClient<WorkingNomadsScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<WorkingNomadsScraper>());
+
+        services.AddHttpClient<DynamiteJobsScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<DynamiteJobsScraper>());
+
+        services.AddHttpClient<EuRemoteJobsScraper>();
+        services.AddTransient<IJobScraper>(sp => sp.GetRequiredService<EuRemoteJobsScraper>());
+
         // Forum scrapers (interview questions — not registered as IJobScraper)
         services.AddHttpClient<DouForumScraper>();
         services.AddHttpClient<RedditScraper>();
