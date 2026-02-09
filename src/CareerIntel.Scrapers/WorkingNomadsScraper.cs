@@ -53,20 +53,23 @@ public sealed class WorkingNomadsScraper(HttpClient httpClient, ILogger<WorkingN
                 }
 
                 // Try multiple selector patterns for job cards
-                var jobCards = SelectNodes(document, "//li[contains(@class, 'job')]")
+                // WorkingNomads uses links that wrap job content
+                var jobCards = SelectNodes(document, "//a[contains(@href, '/jobs/')]")
+                    ?? SelectNodes(document, "//li[contains(@class, 'job')]")
                     ?? SelectNodes(document, "//article[contains(@class, 'job')]")
                     ?? SelectNodes(document, "//div[contains(@class, 'job-card')]")
-                    ?? SelectNodes(document, "//div[contains(@class, 'job-list-item')]")
-                    ?? SelectNodes(document, "//a[contains(@href, '/jobs/')]");
+                    ?? SelectNodes(document, "//div[contains(@class, 'job-list-item')]");
 
                 if (jobCards is null or { Count: 0 })
                 {
                     logger.LogWarning("[WorkingNomads] No job cards found on page {Page}. Trying alternative selectors...", page);
 
-                    // Broader fallback selectors
+                    // Broader fallback selectors - try any link or structure
                     jobCards = SelectNodes(document, "//div[contains(@class, 'posting')]") ??
                               SelectNodes(document, "//tr[contains(@class, 'job')]") ??
-                              SelectNodes(document, "//li[contains(@class, 'listing')]");
+                              SelectNodes(document, "//li[contains(@class, 'listing')]") ??
+                              SelectNodes(document, "//div[contains(@class, 'job')]") ??
+                              SelectNodes(document, "//article");
 
                     if (jobCards is null or { Count: 0 })
                     {

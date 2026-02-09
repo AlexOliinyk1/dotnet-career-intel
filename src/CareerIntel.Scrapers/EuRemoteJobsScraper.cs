@@ -54,11 +54,13 @@ public sealed class EuRemoteJobsScraper(HttpClient httpClient, ILogger<EuRemoteJ
                 }
 
                 // Try multiple selector patterns for job cards
-                var jobCards = SelectNodes(document, "//div[contains(@class, 'job-card')]")
+                // First try to find links that wrap job-card divs, then fall back to div cards themselves
+                var jobCards = SelectNodes(document, "//a[contains(@href, '/jobs/') and .//div[contains(@class, 'job-card')]]")
+                    ?? SelectNodes(document, "//a[contains(@href, '/jobs/')]")
+                    ?? SelectNodes(document, "//div[contains(@class, 'job-card')]")
                     ?? SelectNodes(document, "//article[contains(@class, 'job')]")
                     ?? SelectNodes(document, "//li[contains(@class, 'job')]")
-                    ?? SelectNodes(document, "//div[contains(@class, 'job-listing')]")
-                    ?? SelectNodes(document, "//a[contains(@href, '/jobs/')]");
+                    ?? SelectNodes(document, "//div[contains(@class, 'job-listing')]");
 
                 if (jobCards is null or { Count: 0 })
                 {
@@ -125,7 +127,8 @@ public sealed class EuRemoteJobsScraper(HttpClient httpClient, ILogger<EuRemoteJ
 
             if (string.IsNullOrEmpty(detailUrl))
             {
-                logger.LogDebug("[EuRemoteJobs] Job card has no link, skipping");
+                logger.LogWarning("[EuRemoteJobs] Job card has no link, skipping. Card HTML: {Html}",
+                    card.OuterHtml.Substring(0, Math.Min(200, card.OuterHtml.Length)));
                 return null;
             }
 
@@ -148,7 +151,7 @@ public sealed class EuRemoteJobsScraper(HttpClient httpClient, ILogger<EuRemoteJ
 
             if (string.IsNullOrWhiteSpace(title))
             {
-                logger.LogDebug("[EuRemoteJobs] Job card has no title, skipping");
+                logger.LogWarning("[EuRemoteJobs] Job card has no title, skipping. URL: {Url}", fullUrl);
                 return null;
             }
 
@@ -217,7 +220,7 @@ public sealed class EuRemoteJobsScraper(HttpClient httpClient, ILogger<EuRemoteJ
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "[EuRemoteJobs] Failed to parse job card");
+            logger.LogWarning(ex, "[EuRemoteJobs] Failed to parse job card");
             return null;
         }
     }

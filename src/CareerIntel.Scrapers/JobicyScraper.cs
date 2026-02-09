@@ -294,7 +294,7 @@ public sealed class JobicyScraper(HttpClient httpClient, ILogger<JobicyScraper> 
         var title = job.JobTitle?.ToLowerInvariant() ?? "";
         var description = job.JobDescription?.ToLowerInvariant() ?? "";
         var excerpt = job.JobExcerpt?.ToLowerInvariant() ?? "";
-        var industry = job.JobIndustry?.ToLowerInvariant() ?? "";
+        var industry = job.JobIndustry is not null ? string.Join(" ", job.JobIndustry).ToLowerInvariant() : "";
 
         var searchable = $"{title} {description} {excerpt} {industry}";
 
@@ -438,7 +438,7 @@ public sealed class JobicyScraper(HttpClient httpClient, ILogger<JobicyScraper> 
         public string? CompanyLogo { get; set; }
 
         [JsonPropertyName("jobIndustry")]
-        public string? JobIndustry { get; set; }
+        public List<string>? JobIndustry { get; set; }
 
         [JsonPropertyName("jobType")]
         public List<string>? JobType { get; set; }
