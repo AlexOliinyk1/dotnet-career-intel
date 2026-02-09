@@ -51,12 +51,33 @@ public sealed class DjinniScraper : BaseScraper
                 jobCards = SelectNodes(document, "//li[contains(@class, 'job-item')]") ??
                           SelectNodes(document, "//div[contains(@class, 'job-list-item')]") ??
                           SelectNodes(document, "//article[contains(@class, 'job')]") ??
-                          SelectNodes(document, "//li[contains(@class, 'list-item')]");
+                          SelectNodes(document, "//li[contains(@class, 'list-item')]") ??
+                          SelectNodes(document, "//ul[contains(@class, 'jobs')]/li") ??
+                          SelectNodes(document, "//div[contains(@class, 'vacancy')]") ??
+                          SelectNodes(document, "//div[contains(@class, 'job-card')]");
             }
 
             if (jobCards is null || jobCards.Count == 0)
             {
-                _logger.LogWarning("[Djinni] No job cards found on page {Page} - selectors may need updating", page);
+                // Log diagnostic info about page structure
+                var allLists = SelectNodes(document, "//ul") ?? SelectNodes(document, "//ol");
+                var allArticles = SelectNodes(document, "//article");
+                var allDivsWithClass = SelectNodes(document, "//div[@class]");
+
+                _logger.LogWarning("[Djinni] No job cards found on page {Page}. Found {Lists} lists, {Articles} articles, {Divs} divs with classes",
+                    page, allLists?.Count ?? 0, allArticles?.Count ?? 0, allDivsWithClass?.Count ?? 0);
+
+                // Log some class names to help identify structure
+                if (allDivsWithClass is not null && allDivsWithClass.Count > 0)
+                {
+                    var sampleClasses = allDivsWithClass
+                        .Take(10)
+                        .Select(d => d.GetAttributeValue("class", ""))
+                        .Where(c => !string.IsNullOrWhiteSpace(c))
+                        .Take(5);
+                    _logger.LogDebug("[Djinni] Sample div classes: {Classes}", string.Join(", ", sampleClasses));
+                }
+
                 break;
             }
 

@@ -17,7 +17,8 @@ public sealed class JobicyScraper(HttpClient httpClient, ILogger<JobicyScraper> 
 {
     private const string BaseApiUrl = "https://jobicy.com/api/v2/remote-jobs";
 
-    private static readonly string[] SearchTags = ["net-developer", "csharp"];
+    // Try broader tags - "net-developer" and "csharp" return 0 results
+    private static readonly string[] SearchTags = ["dotnet", "backend", "developer", "software-engineer"];
 
     public override string PlatformName => "Jobicy";
 
@@ -96,16 +97,71 @@ public sealed class JobicyScraper(HttpClient httpClient, ILogger<JobicyScraper> 
         var allJobs = new Dictionary<int, JobicyJob>();
         var maxResults = maxPages * 50;
 
-        foreach (var tag in SearchTags)
+        // Try fetching all jobs first (no tag filter) since tags seem broken
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(RequestDelay, cancellationToken);
 
-            try
+            var url = $"{BaseApiUrl}?count=50";
+            logger.LogInformation("[Jobicy] Fetching all jobs (no tag filter) from {Url}", url);
+
+            var response = await httpClient.GetAsync(url, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
             {
-                await Task.Delay(RequestDelay, cancellationToken);
+                var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
 
-                var url = $"{BaseApiUrl}?count=50&tag={Uri.EscapeDataString(tag)}";
-                logger.LogDebug("[Jobicy] Fetching tag: {Tag} from {Url}", tag, url);
+                if (!string.IsNullOrWhiteSpace(responseText))
+                {
+                    logger.LogDebug("[Jobicy] Response length: {Length} bytes", responseText.Length);
+
+                    JobicyApiResponse? apiResponse;
+                    try
+                    {
+                        apiResponse = JsonSerializer.Deserialize<JobicyApiResponse>(responseText, JsonOptions);
+                        if (apiResponse?.Jobs is not null && apiResponse.Jobs.Count > 0)
+                        {
+                            logger.LogInformation("[Jobicy] API returned {Count} jobs (no tag filter)", apiResponse.Jobs.Count);
+
+                            foreach (var job in apiResponse.Jobs)
+                            {
+                                if (job.Id > 0 && !allJobs.ContainsKey(job.Id))
+                                {
+                                    allJobs[job.Id] = job;
+                                }
+                            }
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        logger.LogWarning(ex, "[Jobicy] Failed to parse JSON response (no tag)");
+                    }
+                }
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "[Jobicy] API request failed (no tag)");
+        }
+
+        // If we got jobs without tags, skip tag-based search
+        if (allJobs.Count > 0)
+        {
+            logger.LogInformation("[Jobicy] Got {Count} jobs without tag filtering, skipping tag search", allJobs.Count);
+        }
+        else
+        {
+            // Fallback: try tags
+            foreach (var tag in SearchTags)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    await Task.Delay(RequestDelay, cancellationToken);
+
+                    var url = $"{BaseApiUrl}?count=50&tag={Uri.EscapeDataString(tag)}";
+                    logger.LogDebug("[Jobicy] Fetching tag: {Tag} from {Url}", tag, url);
 
                 var response = await httpClient.GetAsync(url, cancellationToken);
 
@@ -116,12 +172,34 @@ public sealed class JobicyScraper(HttpClient httpClient, ILogger<JobicyScraper> 
                     continue;
                 }
 
-                var apiResponse = await response.Content
-                    .ReadFromJsonAsync<JobicyApiResponse>(JsonOptions, cancellationToken);
+                // Read as text first to inspect response
+                var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (string.IsNullOrWhiteSpace(responseText))
+                {
+                    logger.LogWarning("[Jobicy] Empty response for tag {Tag}", tag);
+                    continue;
+                }
+
+                logger.LogDebug("[Jobicy] Response length for tag {Tag}: {Length} bytes", tag, responseText.Length);
+                logger.LogDebug("[Jobicy] Response preview: {Preview}",
+                    responseText.Substring(0, Math.Min(300, responseText.Length)));
+
+                JobicyApiResponse? apiResponse;
+                try
+                {
+                    apiResponse = JsonSerializer.Deserialize<JobicyApiResponse>(responseText, JsonOptions);
+                }
+                catch (JsonException ex)
+                {
+                    logger.LogError(ex, "[Jobicy] Failed to parse JSON response for tag {Tag}", tag);
+                    continue;
+                }
 
                 if (apiResponse?.Jobs is null or { Count: 0 })
                 {
-                    logger.LogDebug("[Jobicy] No jobs returned for tag {Tag}", tag);
+                    logger.LogWarning("[Jobicy] API response for tag {Tag} has no jobs. Response structure: {{jobs: {JobsValue}}}",
+                        tag, apiResponse?.Jobs == null ? "null" : "empty array");
                     continue;
                 }
 
@@ -146,6 +224,7 @@ public sealed class JobicyScraper(HttpClient httpClient, ILogger<JobicyScraper> 
                 logger.LogError(ex, "[Jobicy] API request failed for tag {Tag}", tag);
             }
         }
+        } // End of else block for tag-based fallback
 
         if (allJobs.Count == 0)
         {

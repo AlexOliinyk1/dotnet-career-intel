@@ -82,7 +82,19 @@ public sealed class RemoteOkScraper(HttpClient httpClient, ILogger<RemoteOkScrap
                 return [];
             }
 
-            logger.LogDebug("[RemoteOK] Received {Count} elements in response array", rawArray.Length);
+            logger.LogInformation("[RemoteOK] Received {Count} elements in response array", rawArray.Length);
+
+            // Log the structure of first few elements to understand format
+            if (rawArray.Length > 0)
+            {
+                logger.LogDebug("[RemoteOK] First element (metadata): {Json}",
+                    rawArray[0].GetRawText().Substring(0, Math.Min(500, rawArray[0].GetRawText().Length)));
+            }
+            if (rawArray.Length > 1)
+            {
+                logger.LogDebug("[RemoteOK] Second element structure: {Json}",
+                    rawArray[1].GetRawText().Substring(0, Math.Min(500, rawArray[1].GetRawText().Length)));
+            }
 
             // Skip the first element (metadata), then deserialize each remaining element as a job
             var jobs = new List<RemoteOkJob>();
@@ -92,17 +104,28 @@ public sealed class RemoteOkScraper(HttpClient httpClient, ILogger<RemoteOkScrap
                 {
                     var job = rawArray[i].Deserialize<RemoteOkJob>(JsonOptions);
                     if (job is not null)
+                    {
                         jobs.Add(job);
+                        if (i <= 3) // Log first few jobs for diagnostics
+                        {
+                            logger.LogDebug("[RemoteOK] Deserialized job {Index}: Position={Position}, Company={Company}, Id={Id}",
+                                i, job.Position ?? "N/A", job.Company ?? "N/A", job.Id?.ToString() ?? "N/A");
+                        }
+                    }
                 }
                 catch (JsonException ex)
                 {
-                    logger.LogDebug(ex, "[RemoteOK] Failed to deserialize job at index {Index}", i);
+                    logger.LogWarning(ex, "[RemoteOK] Failed to deserialize job at index {Index}. Element: {Json}",
+                        i, rawArray[i].GetRawText().Substring(0, Math.Min(200, rawArray[i].GetRawText().Length)));
                 }
             }
 
+            logger.LogInformation("[RemoteOK] Successfully deserialized {Count} jobs out of {Total} elements",
+                jobs.Count, rawArray.Length - 1);
+
             if (jobs.Count == 0)
             {
-                logger.LogWarning("[RemoteOK] No jobs deserialized from API response");
+                logger.LogWarning("[RemoteOK] No jobs deserialized from API response. Response may have changed format.");
                 return [];
             }
 
@@ -142,7 +165,7 @@ public sealed class RemoteOkScraper(HttpClient httpClient, ILogger<RemoteOkScrap
 
         return new JobVacancy
         {
-            Id = GenerateId(job.Id?.ToString() ?? job.Slug ?? Guid.NewGuid().ToString()),
+            Id = GenerateId(job.Id ?? job.Slug ?? Guid.NewGuid().ToString()),
             Title = position,
             Company = job.Company ?? string.Empty,
             City = string.Empty,
@@ -238,8 +261,9 @@ public sealed class RemoteOkScraper(HttpClient httpClient, ILogger<RemoteOkScrap
 
     private sealed class RemoteOkJob
     {
+        // RemoteOK API returns id as string, not number
         [JsonPropertyName("id")]
-        public long? Id { get; set; }
+        public string? Id { get; set; }
 
         [JsonPropertyName("slug")]
         public string? Slug { get; set; }
