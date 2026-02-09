@@ -77,7 +77,12 @@ public sealed class WeWorkRemotelyScraper(HttpClient httpClient, ILogger<WeWorkR
         {
             await Task.Delay(RequestDelay, cancellationToken);
 
-            var response = await httpClient.GetAsync(apiUrl, cancellationToken);
+            // Add required headers - server returns 406 without them
+            using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
+            request.Headers.Add("Accept", "application/json");
+            request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+            var response = await httpClient.SendAsync(request, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {

@@ -394,22 +394,34 @@ This project includes comprehensive market research:
 
 ## 🚧 Known Limitations
 
-### Scraper Verification Needed
+### Scraper Status (Last Tested: Feb 2026)
 
-Some scrapers have unverified selectors that may need updating:
-- **DjinniScraper** - CSS selectors and query parameters
-- **DouScraper** - XPath selectors
-- **LinkedInScraper** - Selectors change frequently
-- **JustJoinItScraper** - API endpoint verification
+**✅ Working Scrapers (4/11)** - 63 total vacancies tested
+- **HackerNewsScraper** ✅ - 1 vacancy found (Firebase API)
+- **DouScraper** ✅ - 20 vacancies found (HTML parsing)
+- **NoFluffJobsScraper** ✅ - 20 vacancies found (HTML parsing)
+- **HimalayasScraper** ✅ - 1 vacancy found (JSON API, fixed deserialization)
 
-**Workaround:** Test each scraper individually and report issues. Scrapers include compliance delays (500-2000ms) to respect rate limits.
+**⚠️ Needs Manual Investigation (7/11)**
+- **DjinniScraper** ⚠️ - CSS selectors outdated, returns 0 vacancies
+- **RemoteOkScraper** ⚠️ - API parsing issue, returns 0 vacancies
+- **JustJoinItScraper** ⚠️ - API endpoint changed (404), needs new URL
+- **WeWorkRemotelyScraper** ⚠️ - API returns 406, may need authentication
+- **JobicyScraper** ⚠️ - Returns 0 vacancies, filtering or API issue
+- **LinkedInScraper** ⚠️ - Not tested, likely requires authentication
+- **ToptalScraper** ⚠️ - Not tested
 
-### Current Limitations
+**Success Rate:** 36% (4/11 working)
+
+**Workaround:** Use the working scrapers (HackerNews, DOU, NoFluffJobs, Himalayas) for reliable data. Contributions welcome to fix broken scrapers! See [Contributing](#contributing) section.
+
+### Other Limitations
 
 - No authentication support for platforms requiring login
 - OCR (scan-image) requires external Tesseract installation
 - Notification system requires manual config file creation
 - No web UI (CLI only)
+- Some compiler warnings (CS9107) in primary constructors - safe to ignore
 
 ---
 

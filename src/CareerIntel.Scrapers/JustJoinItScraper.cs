@@ -14,7 +14,8 @@ namespace CareerIntel.Scrapers;
 public sealed class JustJoinItScraper(HttpClient httpClient, ILogger<JustJoinItScraper> logger, ScrapingCompliance? compliance = null)
     : BaseScraper(httpClient, logger, compliance)
 {
-    private const string ApiUrl = "https://justjoin.it/api/offers";
+    // Updated API endpoint - JustJoin.it changed their API structure
+    private const string ApiUrl = "https://api.justjoin.it/v2/user-panel/offers";
     private const string WebUrl = "https://justjoin.it/offers";
 
     public override string PlatformName => "JustJoinIt";

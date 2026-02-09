@@ -147,9 +147,22 @@ public sealed class HimalayasScraper(HttpClient httpClient, ILogger<HimalayasScr
         var (salaryMin, salaryMax, currency) = ParseSalaryRange(job.Salary);
 
         // Parse posted date
-        var postedDate = DateTimeOffset.TryParse(job.PubDate, out var parsed)
-            ? parsed
-            : DateTimeOffset.MinValue;
+        var postedDate = DateTimeOffset.MinValue;
+        if (job.PubDate.HasValue)
+        {
+            if (job.PubDate.Value.ValueKind == JsonValueKind.String)
+            {
+                var dateStr = job.PubDate.Value.GetString();
+                if (DateTimeOffset.TryParse(dateStr, out var parsed))
+                    postedDate = parsed;
+            }
+            else if (job.PubDate.Value.ValueKind == JsonValueKind.Number)
+            {
+                // Assume Unix timestamp
+                var timestamp = job.PubDate.Value.GetInt64();
+                postedDate = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+            }
+        }
 
         return new JobVacancy
         {
@@ -314,13 +327,13 @@ public sealed class HimalayasScraper(HttpClient httpClient, ILogger<HimalayasScr
         public string? ApplicationLink { get; set; }
 
         [JsonPropertyName("pubDate")]
-        public string? PubDate { get; set; }
+        public JsonElement? PubDate { get; set; }
 
         [JsonPropertyName("locationRestrictions")]
         public List<string>? LocationRestrictions { get; set; }
 
         [JsonPropertyName("timezoneRestrictions")]
-        public List<string>? TimezoneRestrictions { get; set; }
+        public List<JsonElement>? TimezoneRestrictions { get; set; }
 
         [JsonPropertyName("salary")]
         public string? Salary { get; set; }
