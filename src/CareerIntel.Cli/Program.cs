@@ -54,7 +54,11 @@ public static class Program
             ProfileCommand.Create(),
             DashboardCommand.Create(),
             AssessCommand.Create(),
-            WatchCommand.Create()
+            WatchCommand.Create(),
+            CompareOffersCommand.Create(),
+            LearnPathCommand.Create(),
+            PredictCommand.Create(),
+            ScheduleCommand.Create()
         };
 
         var dataOption = new Option<string>(

@@ -38,6 +38,9 @@ public static class ProfileCommand
         command.AddCommand(CreateEditCommand());
         command.AddCommand(CreateAddSkillCommand());
         command.AddCommand(CreateValidateCommand());
+        command.AddCommand(CreateListCommand());
+        command.AddCommand(CreateSwitchCommand());
+        command.AddCommand(CreateCloneCommand());
 
         return command;
     }
@@ -922,5 +925,257 @@ public static class ProfileCommand
         Console.ForegroundColor = ConsoleColor.White;
         Console.WriteLine(string.IsNullOrWhiteSpace(value) ? "(not set)" : value);
         Console.ResetColor();
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Subcommand: profile list (Multi-Profile Support)
+    // ──────────────────────────────────────────────────────────────
+
+    private static Command CreateListCommand()
+    {
+        var cmd = new Command("list", "List all available profiles");
+        cmd.SetHandler(ExecuteListAsync);
+        return cmd;
+    }
+
+    private static async Task ExecuteListAsync()
+    {
+        var profilesPath = GetProfilesDirectory();
+        if (!Directory.Exists(profilesPath))
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("No profiles directory found. Profiles will be created on first use.");
+            Console.ResetColor();
+            return;
+        }
+
+        var profileFiles = Directory.GetFiles(profilesPath, "*.json");
+        if (profileFiles.Length == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("No profiles found. Create one with 'profile create --output profiles/name.json'");
+            Console.ResetColor();
+            return;
+        }
+
+        var activeName = await GetActiveProfileNameAsync();
+
+        PrintBanner("AVAILABLE PROFILES");
+        Console.WriteLine();
+
+        foreach (var file in profileFiles.OrderBy(f => f))
+        {
+            var fileName = Path.GetFileNameWithoutExtension(file);
+            var json = await File.ReadAllTextAsync(file);
+            var profile = JsonSerializer.Deserialize<UserProfile>(json, ReadOptions);
+
+            var isActive = file.Equals(activeName, StringComparison.OrdinalIgnoreCase) ||
+                          fileName.Equals(Path.GetFileNameWithoutExtension(activeName), StringComparison.OrdinalIgnoreCase);
+
+            if (isActive)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write("  ● ");
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write("  ○ ");
+            }
+
+            Console.ForegroundColor = isActive ? ConsoleColor.Green : ConsoleColor.White;
+            Console.Write(fileName);
+
+            if (isActive)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGreen;
+                Console.Write(" (active)");
+            }
+
+            Console.ResetColor();
+            Console.WriteLine();
+
+            if (profile != null)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"    {profile.Personal.Name} • {profile.Skills.Count} skills • {string.Join(", ", profile.Personal.TargetRoles.Take(2))}");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine();
+        }
+
+        Console.WriteLine("Commands:");
+        Console.WriteLine("  profile switch <name>    Switch to a different profile");
+        Console.WriteLine("  profile clone <name>     Clone current profile to new name");
+        Console.WriteLine("  profile show             Show active profile details");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Subcommand: profile switch (Multi-Profile Support)
+    // ──────────────────────────────────────────────────────────────
+
+    private static Command CreateSwitchCommand()
+    {
+        var nameArg = new Argument<string>(
+            "name",
+            "Name of the profile to switch to (without .json extension)");
+
+        var cmd = new Command("switch", "Switch to a different profile")
+        {
+            nameArg
+        };
+
+        cmd.SetHandler(ExecuteSwitchAsync, nameArg);
+        return cmd;
+    }
+
+    private static async Task ExecuteSwitchAsync(string name)
+    {
+        var profilesPath = GetProfilesDirectory();
+        var profilePath = Path.Combine(profilesPath, $"{name}.json");
+
+        if (!File.Exists(profilePath))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Profile '{name}' not found in {profilesPath}");
+            Console.ResetColor();
+            Console.WriteLine("\nAvailable profiles:");
+            await ExecuteListAsync();
+            return;
+        }
+
+        await SetActiveProfileAsync(profilePath);
+
+        // Update default profile symlink
+        File.Copy(profilePath, DefaultProfilePath, overwrite: true);
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"✓ Switched to profile: {name}");
+        Console.ResetColor();
+
+        // Show profile summary
+        var json = await File.ReadAllTextAsync(profilePath);
+        var profile = JsonSerializer.Deserialize<UserProfile>(json, ReadOptions);
+
+        if (profile != null)
+        {
+            Console.WriteLine($"\nProfile: {profile.Personal.Name}");
+            Console.WriteLine($"Title: {profile.Personal.Title}");
+            Console.WriteLine($"Skills: {string.Join(", ", profile.Skills.Take(5).Select(s => s.SkillName))}");
+            Console.WriteLine($"Target Roles: {string.Join(", ", profile.Personal.TargetRoles)}");
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Subcommand: profile clone (Multi-Profile Support)
+    // ──────────────────────────────────────────────────────────────
+
+    private static Command CreateCloneCommand()
+    {
+        var nameArg = new Argument<string>(
+            "newName",
+            "Name for the cloned profile (without .json extension)");
+
+        var cmd = new Command("clone", "Clone current profile to a new profile")
+        {
+            nameArg
+        };
+
+        cmd.SetHandler(ExecuteCloneAsync, nameArg);
+        return cmd;
+    }
+
+    private static async Task ExecuteCloneAsync(string newName)
+    {
+        var profilesPath = GetProfilesDirectory();
+        if (!Directory.Exists(profilesPath))
+            Directory.CreateDirectory(profilesPath);
+
+        var newProfilePath = Path.Combine(profilesPath, $"{newName}.json");
+
+        if (File.Exists(newProfilePath))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Profile '{newName}' already exists.");
+            Console.ResetColor();
+            return;
+        }
+
+        var activePath = await GetActiveProfileNameAsync();
+        if (!File.Exists(activePath))
+        {
+            if (File.Exists(DefaultProfilePath))
+                activePath = DefaultProfilePath;
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("No active profile to clone. Create one first.");
+                Console.ResetColor();
+                return;
+            }
+        }
+
+        var json = await File.ReadAllTextAsync(activePath);
+        var profile = JsonSerializer.Deserialize<UserProfile>(json, ReadOptions);
+
+        if (profile == null)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("Failed to load active profile.");
+            Console.ResetColor();
+            return;
+        }
+
+        // Update metadata
+        Console.Write($"Description for '{newName}' profile: ");
+        var description = Console.ReadLine();
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            profile.Personal.Summary = description;
+        }
+
+        var newJson = JsonSerializer.Serialize(profile, JsonOptions);
+        await File.WriteAllTextAsync(newProfilePath, newJson);
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"\n✓ Profile cloned to '{newName}'");
+        Console.ResetColor();
+        Console.WriteLine($"Location: {newProfilePath}");
+        Console.WriteLine("\nYou can now:");
+        Console.WriteLine($"  profile switch {newName}    - Switch to the new profile");
+        Console.WriteLine($"  profile edit --path {newProfilePath} --section <section>   - Edit specific sections");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Multi-Profile Helpers
+    // ──────────────────────────────────────────────────────────────
+
+    private static string GetProfilesDirectory()
+    {
+        return Path.Combine(Program.DataDirectory, "profiles");
+    }
+
+    private static async Task<string> GetActiveProfileNameAsync()
+    {
+        var configPath = Path.Combine(Program.DataDirectory, "active-profile.txt");
+
+        if (!File.Exists(configPath))
+        {
+            // Default to my-profile.json if it exists
+            if (File.Exists(DefaultProfilePath))
+                return DefaultProfilePath;
+
+            return string.Empty;
+        }
+
+        var name = await File.ReadAllTextAsync(configPath);
+        return name.Trim();
+    }
+
+    private static async Task SetActiveProfileAsync(string profilePath)
+    {
+        var configPath = Path.Combine(Program.DataDirectory, "active-profile.txt");
+        await File.WriteAllTextAsync(configPath, profilePath);
     }
 }

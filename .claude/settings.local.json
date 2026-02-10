@@ -10,7 +10,14 @@
       "Bash(git config:*)",
       "Bash(git commit:*)",
       "Bash(gh:*)",
-      "Bash(git remote remove:*)"
+      "Bash(git remote remove:*)",
+      "Bash(dotnet build:*)",
+      "Bash(tee:*)",
+      "Bash(git restore:*)",
+      "Bash(dotnet add:*)",
+      "WebFetch(domain:justjoin.it)",
+      "Bash(git checkout:*)",
+      "Bash(dir:*)"
     ]
   }
 }
