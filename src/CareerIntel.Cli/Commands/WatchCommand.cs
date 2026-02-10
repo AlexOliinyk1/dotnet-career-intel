@@ -130,6 +130,20 @@ public static class WatchCommand
         var seenIdsPath = Path.Combine(Program.DataDirectory, "watch-seen-ids.json");
         var seenIds = await LoadSeenIdsAsync(seenIdsPath);
 
+        // ── Load custom alert rules ──────────────────────────────────────
+        var rulesPath = Path.Combine(Program.DataDirectory, "watch-rules.json");
+        var alertRules = await LoadAlertRulesAsync(rulesPath);
+        if (alertRules.Count > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"Loaded {alertRules.Count} custom alert rule(s)");
+            Console.ResetColor();
+            foreach (var rule in alertRules.Where(r => r.Enabled))
+            {
+                Console.WriteLine($"  ✓ {rule.Name} (priority: {rule.Priority})");
+            }
+        }
+
         // ── Cancellation via Ctrl+C ──────────────────────────────────────
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
@@ -187,6 +201,35 @@ public static class WatchCommand
                 var ranked = matchEngine.RankVacancies(newVacancies, minScore);
                 Console.WriteLine($"  Matches above {minScore}: {ranked.Count} new");
 
+                // (d2) Evaluate custom alert rules
+                var ruleMatches = new List<(JobVacancy Vacancy, WatchRule Rule)>();
+                if (alertRules.Count > 0)
+                {
+                    foreach (var vacancy in newVacancies)
+                    {
+                        foreach (var rule in alertRules.Where(r => r.Enabled))
+                        {
+                            if (EvaluateRule(rule, vacancy))
+                            {
+                                ruleMatches.Add((vacancy, rule));
+                            }
+                        }
+                    }
+
+                    if (ruleMatches.Count > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Magenta;
+                        Console.WriteLine($"  Custom rule matches: {ruleMatches.Count}");
+                        Console.ResetColor();
+
+                        var byRule = ruleMatches.GroupBy(m => m.Rule.Name);
+                        foreach (var group in byRule)
+                        {
+                            Console.WriteLine($"    {group.Key}: {group.Count()} match(es)");
+                        }
+                    }
+                }
+
                 // (e) Print per-vacancy detail unless --quiet
                 if (!quiet && ranked.Count > 0)
                 {
@@ -200,16 +243,41 @@ public static class WatchCommand
                     Console.WriteLine();
                 }
 
-                // (f) Notify if there are new high-score matches
-                if (ranked.Count > 0)
+                // (f) Notify if there are new high-score matches or rule matches
+                var allNotifications = ranked.ToList();
+
+                // Add rule-matched vacancies that aren't already in ranked list
+                foreach (var (vacancy, rule) in ruleMatches)
+                {
+                    if (!allNotifications.Any(v => v.Id == vacancy.Id))
+                    {
+                        // Annotate with rule information
+                        vacancy.MatchScore = new MatchScore
+                        {
+                            OverallScore = rule.Priority * 10, // Use priority as pseudo-score
+                            MatchingSkills = [],
+                            MissingSkills = [],
+                            BonusSkills = [],
+                            RecommendedAction = RecommendedAction.Apply
+                        };
+                        allNotifications.Add(vacancy);
+                    }
+                }
+
+                if (allNotifications.Count > 0)
                 {
                     foreach (var notifier in healthyNotifiers)
                     {
                         try
                         {
-                            await notifier.NotifyMatchesAsync(ranked, cts.Token);
+                            await notifier.NotifyMatchesAsync(allNotifications, cts.Token);
                             Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine($"  Notified {ranked.Count} matches via {notifier.ChannelName}");
+                            var profileCount = ranked.Count;
+                            var ruleCount = allNotifications.Count - profileCount;
+                            var summary = ruleCount > 0
+                                ? $"{profileCount} profile + {ruleCount} rule match(es)"
+                                : $"{profileCount} match(es)";
+                            Console.WriteLine($"  Notified {summary} via {notifier.ChannelName}");
                             Console.ResetColor();
                         }
                         catch (Exception ex)
@@ -378,5 +446,140 @@ public static class WatchCommand
     {
         public List<string> SeenIds { get; set; } = [];
         public DateTime LastUpdated { get; set; }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Custom Alert Rules
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static async Task<List<WatchRule>> LoadAlertRulesAsync(string path)
+    {
+        if (!File.Exists(path))
+            return [];
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            var data = JsonSerializer.Deserialize<WatchRulesData>(json, JsonOptions);
+            return data?.Rules ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static bool EvaluateRule(WatchRule rule, JobVacancy vacancy)
+    {
+        // Company match
+        if (rule.Companies?.Count > 0)
+        {
+            var match = rule.Companies.Any(c =>
+                vacancy.Company.Equals(c, StringComparison.OrdinalIgnoreCase));
+            if (!match) return false;
+        }
+
+        // Skills match (must have ALL specified skills)
+        if (rule.MustHaveSkills?.Count > 0)
+        {
+            var vacancySkills = vacancy.RequiredSkills
+                .Concat(vacancy.PreferredSkills)
+                .Select(s => s.ToLowerInvariant())
+                .ToHashSet();
+
+            var hasAll = rule.MustHaveSkills.All(skill =>
+                vacancySkills.Contains(skill.ToLowerInvariant()));
+
+            if (!hasAll) return false;
+        }
+
+        // Skills match (must have ANY of specified skills)
+        if (rule.MustHaveAnySkill?.Count > 0)
+        {
+            var vacancySkills = vacancy.RequiredSkills
+                .Concat(vacancy.PreferredSkills)
+                .Select(s => s.ToLowerInvariant())
+                .ToHashSet();
+
+            var hasAny = rule.MustHaveAnySkill.Any(skill =>
+                vacancySkills.Contains(skill.ToLowerInvariant()));
+
+            if (!hasAny) return false;
+        }
+
+        // Minimum salary
+        if (rule.MinSalary.HasValue)
+        {
+            if (!vacancy.SalaryMin.HasValue || vacancy.SalaryMin.Value < rule.MinSalary.Value)
+                return false;
+        }
+
+        // Remote policy
+        if (rule.RemoteOnly)
+        {
+            if (vacancy.RemotePolicy != Core.Enums.RemotePolicy.FullyRemote &&
+                vacancy.RemotePolicy != Core.Enums.RemotePolicy.Hybrid)
+                return false;
+        }
+
+        // Seniority level
+        if (rule.SeniorityLevels?.Count > 0)
+        {
+            var seniorityMatch = rule.SeniorityLevels.Contains(vacancy.SeniorityLevel.ToString());
+            if (!seniorityMatch) return false;
+        }
+
+        // Title keywords (must contain ANY)
+        if (rule.TitleKeywords?.Count > 0)
+        {
+            var titleLower = vacancy.Title.ToLowerInvariant();
+            var hasKeyword = rule.TitleKeywords.Any(kw =>
+                titleLower.Contains(kw.ToLowerInvariant()));
+            if (!hasKeyword) return false;
+        }
+
+        // Exclusions - company
+        if (rule.ExcludeCompanies?.Count > 0)
+        {
+            var excluded = rule.ExcludeCompanies.Any(c =>
+                vacancy.Company.Equals(c, StringComparison.OrdinalIgnoreCase));
+            if (excluded) return false;
+        }
+
+        // Exclusions - keywords in title
+        if (rule.ExcludeTitleKeywords?.Count > 0)
+        {
+            var titleLower = vacancy.Title.ToLowerInvariant();
+            var hasExcluded = rule.ExcludeTitleKeywords.Any(kw =>
+                titleLower.Contains(kw.ToLowerInvariant()));
+            if (hasExcluded) return false;
+        }
+
+        return true; // Passed all conditions
+    }
+
+    private sealed class WatchRulesData
+    {
+        public List<WatchRule> Rules { get; set; } = [];
+    }
+
+    private sealed class WatchRule
+    {
+        public string Name { get; set; } = string.Empty;
+        public bool Enabled { get; set; } = true;
+        public int Priority { get; set; } = 5; // 1-10, higher = more important
+
+        // Positive conditions (must match)
+        public List<string>? Companies { get; set; }
+        public List<string>? MustHaveSkills { get; set; } // AND logic
+        public List<string>? MustHaveAnySkill { get; set; } // OR logic
+        public decimal? MinSalary { get; set; }
+        public bool RemoteOnly { get; set; }
+        public List<string>? SeniorityLevels { get; set; } // e.g., ["Senior", "Lead"]
+        public List<string>? TitleKeywords { get; set; } // OR logic
+
+        // Negative conditions (exclusions)
+        public List<string>? ExcludeCompanies { get; set; }
+        public List<string>? ExcludeTitleKeywords { get; set; }
     }
 }

@@ -191,6 +191,11 @@ public static class ApplyCommand
         Console.WriteLine($"{dashboard.AverageDaysToResponse} days");
         Console.WriteLine();
 
+        // Application Funnel Visualization
+        PrintApplicationFunnel(applications);
+
+        Console.WriteLine();
+
         // Status breakdown
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("  Status Breakdown:");
@@ -397,6 +402,211 @@ public static class ApplyCommand
         Console.WriteLine($"  Generated: {batch.CreatedDate:yyyy-MM-dd HH:mm}");
         Console.WriteLine("==========================================================");
         Console.ResetColor();
+    }
+
+    private static void PrintApplicationFunnel(List<JobApplication> applications)
+    {
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("  Application Funnel:");
+        Console.ResetColor();
+
+        // Define funnel stages
+        var stages = new[]
+        {
+            ("Applied", new[] { ApplicationStatus.Applied, ApplicationStatus.ResumeReady, ApplicationStatus.Pending }),
+            ("Viewed", new[] { ApplicationStatus.Viewed }),
+            ("Screening", new[] { ApplicationStatus.Screening }),
+            ("Interview", new[] { ApplicationStatus.Interview }),
+            ("Offer", new[] { ApplicationStatus.Offer })
+        };
+
+        var stageCounts = stages
+            .Select(stage => new
+            {
+                Name = stage.Item1,
+                Count = applications.Count(a => stage.Item2.Contains(a.Status))
+            })
+            .ToList();
+
+        // Calculate total at top of funnel (all applications)
+        var totalApplied = stageCounts.FirstOrDefault()?.Count ?? 0;
+
+        if (totalApplied == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine("    No applications to visualize");
+            Console.ResetColor();
+            return;
+        }
+
+        // Print funnel stages
+        Console.WriteLine();
+        var maxWidth = 50;
+
+        for (var i = 0; i < stageCounts.Count; i++)
+        {
+            var stage = stageCounts[i];
+            var pct = totalApplied > 0 ? (double)stage.Count / totalApplied * 100 : 0;
+            var barWidth = totalApplied > 0 ? (int)Math.Round((double)stage.Count / totalApplied * maxWidth) : 0;
+
+            // Calculate conversion rate from previous stage
+            string conversionInfo = "";
+            if (i > 0)
+            {
+                var previousStage = stageCounts[i - 1];
+                var conversionRate = previousStage.Count > 0 ? (double)stage.Count / previousStage.Count * 100 : 0;
+                conversionInfo = $" ({conversionRate:F1}% conversion)";
+            }
+
+            // Stage name and count
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write($"    {stage.Name,-12}");
+            Console.ResetColor();
+
+            // Funnel bar
+            var color = stage.Name switch
+            {
+                "Applied" => ConsoleColor.Cyan,
+                "Viewed" => ConsoleColor.Blue,
+                "Screening" => ConsoleColor.Yellow,
+                "Interview" => ConsoleColor.Green,
+                "Offer" => ConsoleColor.Green,
+                _ => ConsoleColor.White
+            };
+
+            Console.ForegroundColor = color;
+            var bar = new string('█', barWidth);
+            var padding = new string(' ', maxWidth - barWidth);
+            Console.Write($" {bar}{padding}");
+            Console.ResetColor();
+
+            // Count and percentage
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write($" {stage.Count,3}");
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Write($" ({pct:F0}%)");
+            Console.ResetColor();
+
+            // Conversion rate
+            if (!string.IsNullOrEmpty(conversionInfo))
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write(conversionInfo);
+                Console.ResetColor();
+            }
+
+            Console.WriteLine();
+        }
+
+        Console.WriteLine();
+
+        // Calculate funnel metrics
+        var viewed = stageCounts.FirstOrDefault(s => s.Name == "Viewed")?.Count ?? 0;
+        var screening = stageCounts.FirstOrDefault(s => s.Name == "Screening")?.Count ?? 0;
+        var interview = stageCounts.FirstOrDefault(s => s.Name == "Interview")?.Count ?? 0;
+        var offer = stageCounts.FirstOrDefault(s => s.Name == "Offer")?.Count ?? 0;
+
+        var appliedToViewedRate = totalApplied > 0 ? (double)viewed / totalApplied * 100 : 0;
+        var screeningToInterviewRate = screening > 0 ? (double)interview / screening * 100 : 0;
+        var interviewToOfferRate = interview > 0 ? (double)offer / interview * 100 : 0;
+
+        // Funnel insights
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("  Funnel Insights:");
+        Console.ResetColor();
+
+        if (viewed == 0 && totalApplied > 5)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"    ⚠ Low visibility: {totalApplied} applications but none viewed yet");
+            Console.WriteLine("       → Focus on personalized outreach to recruiters");
+            Console.ResetColor();
+        }
+        else if (appliedToViewedRate > 0)
+        {
+            var viewColor = appliedToViewedRate >= 30 ? ConsoleColor.Green : appliedToViewedRate >= 15 ? ConsoleColor.Yellow : ConsoleColor.Red;
+            Console.ForegroundColor = viewColor;
+            Console.WriteLine($"    View rate: {appliedToViewedRate:F0}% of applications are being viewed");
+            Console.ResetColor();
+        }
+
+        if (screening > 0 && interview == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"    ⚠ Screening bottleneck: {screening} screening(s) but no interviews yet");
+            Console.WriteLine("       → Review and improve your interview prep materials");
+            Console.ResetColor();
+        }
+        else if (screeningToInterviewRate > 0)
+        {
+            var screeningColor = screeningToInterviewRate >= 40 ? ConsoleColor.Green : screeningToInterviewRate >= 20 ? ConsoleColor.Yellow : ConsoleColor.Red;
+            Console.ForegroundColor = screeningColor;
+            Console.WriteLine($"    Screening → Interview: {screeningToInterviewRate:F0}% pass rate");
+            Console.ResetColor();
+        }
+
+        if (interview > 0 && interviewToOfferRate > 0)
+        {
+            var offerColor = interviewToOfferRate >= 25 ? ConsoleColor.Green : interviewToOfferRate >= 10 ? ConsoleColor.Yellow : ConsoleColor.Red;
+            Console.ForegroundColor = offerColor;
+            Console.WriteLine($"    Interview → Offer: {interviewToOfferRate:F0}% conversion rate");
+            Console.ResetColor();
+        }
+
+        // Overall funnel health
+        if (offer > 0)
+        {
+            var overallRate = totalApplied > 0 ? (double)offer / totalApplied * 100 : 0;
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"    ✓ Overall success: {overallRate:F1}% of applications resulted in offers");
+            Console.ResetColor();
+        }
+
+        // Identify biggest drop-off
+        var dropOffs = new List<(string Stage, double DropOff)>();
+
+        for (var i = 1; i < stageCounts.Count; i++)
+        {
+            var previousCount = stageCounts[i - 1].Count;
+            var currentCount = stageCounts[i].Count;
+
+            if (previousCount > 0)
+            {
+                var dropOff = (double)(previousCount - currentCount) / previousCount * 100;
+                dropOffs.Add(($"{stageCounts[i - 1].Name} → {stageCounts[i].Name}", dropOff));
+            }
+        }
+
+        if (dropOffs.Count > 0)
+        {
+            var biggestDropOff = dropOffs.OrderByDescending(d => d.DropOff).First();
+            if (biggestDropOff.DropOff >= 60)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"    ⚠ Biggest drop-off: {biggestDropOff.Stage} ({biggestDropOff.DropOff:F0}% loss)");
+                Console.ResetColor();
+
+                // Suggest actions based on drop-off stage
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                if (biggestDropOff.Stage.Contains("Applied → Viewed"))
+                {
+                    Console.WriteLine("       → Improve resume headlines and keywords for ATS systems");
+                }
+                else if (biggestDropOff.Stage.Contains("Viewed → Screening"))
+                {
+                    Console.WriteLine("       → Strengthen your profile summary and key achievements");
+                }
+                else if (biggestDropOff.Stage.Contains("Screening → Interview"))
+                {
+                    Console.WriteLine("       → Practice behavioral questions and technical prep");
+                }
+                else if (biggestDropOff.Stage.Contains("Interview → Offer"))
+                {
+                    Console.WriteLine("       → Work on salary negotiation and closing skills");
+                }
+                Console.ResetColor();
+            }
+        }
     }
 
     private static string Truncate(string value, int maxLength) =>

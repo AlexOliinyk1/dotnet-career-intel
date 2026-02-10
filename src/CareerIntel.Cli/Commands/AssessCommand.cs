@@ -157,6 +157,9 @@ public static class AssessCommand
         // Display report summary
         PrintReportSummary(report);
 
+        // Display market positioning insights
+        PrintMarketPositioning(report, profile);
+
         Console.ForegroundColor = ConsoleColor.DarkGray;
         Console.WriteLine("\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
         Console.ResetColor();
@@ -324,6 +327,297 @@ public static class AssessCommand
         Console.WriteLine($" ({pct:F0}%)");
         Console.ResetColor();
     }
+
+    private static void PrintMarketPositioning(CompetitivenessReport report, UserProfile profile)
+    {
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("\n  ═══ Market Positioning Analysis ═══");
+        Console.ResetColor();
+
+        // 1. Geographic Competitiveness
+        var geoAnalysis = report.Assessments
+            .Where(a => !string.IsNullOrEmpty(a.Vacancy.Country))
+            .GroupBy(a => a.Vacancy.Country!)
+            .Select(g => new
+            {
+                Country = g.Key,
+                AvgScore = g.Average(a => a.CompetitivenessScore),
+                TopCandidateCount = g.Count(a => a.Tier == "Top Candidate"),
+                TotalCount = g.Count()
+            })
+            .OrderByDescending(x => x.AvgScore)
+            .Take(5)
+            .ToList();
+
+        if (geoAnalysis.Count > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine("\n  Geographic Competitiveness (Top 5 Markets):");
+            Console.ResetColor();
+
+            foreach (var geo in geoAnalysis)
+            {
+                var pct = geo.TotalCount > 0 ? (double)geo.TopCandidateCount / geo.TotalCount * 100 : 0;
+                var color = geo.AvgScore >= 65 ? ConsoleColor.Green : geo.AvgScore >= 50 ? ConsoleColor.Yellow : ConsoleColor.DarkYellow;
+
+                Console.ForegroundColor = color;
+                Console.Write($"    {geo.Country,-20}");
+                Console.ResetColor();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write($" Avg: {geo.AvgScore:F0}/100");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  |  {geo.TopCandidateCount}/{geo.TotalCount} top ({pct:F0}%)");
+                Console.ResetColor();
+            }
+        }
+
+        // 2. Skill Gap Impact Analysis
+        var skillImpact = AnalyzeSkillGapImpact(report);
+        if (skillImpact.Count > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine("\n  High-Impact Skill Gaps (learn these to jump tiers):");
+            Console.ResetColor();
+
+            foreach (var skill in skillImpact.Take(5))
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write($"    {skill.SkillName,-25}");
+                Console.ResetColor();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write($" Missing in {skill.MissingCount} roles");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($" | Avg tier score: {skill.AvgScoreWithoutSkill:F0} → {skill.PotentialScore:F0}");
+                Console.ResetColor();
+            }
+        }
+
+        // 3. Salary Band Positioning
+        var salaryBands = report.Assessments
+            .Where(a => a.Vacancy.SalaryMax.HasValue)
+            .GroupBy(a => ClassifySalaryBand(a.Vacancy.SalaryMax!.Value))
+            .Select(g => new
+            {
+                Band = g.Key,
+                AvgScore = g.Average(a => a.CompetitivenessScore),
+                TopCandidateCount = g.Count(a => a.Tier == "Top Candidate"),
+                TotalCount = g.Count()
+            })
+            .OrderBy(x => x.Band)
+            .ToList();
+
+        if (salaryBands.Count > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine("\n  Competitiveness by Salary Band:");
+            Console.ResetColor();
+
+            foreach (var band in salaryBands)
+            {
+                var bandLabel = band.Band switch
+                {
+                    0 => "< $60k",
+                    1 => "$60k - $100k",
+                    2 => "$100k - $150k",
+                    3 => "$150k - $200k",
+                    _ => "$200k+"
+                };
+
+                var pct = band.TotalCount > 0 ? (double)band.TopCandidateCount / band.TotalCount * 100 : 0;
+                var color = band.AvgScore >= 65 ? ConsoleColor.Green : band.AvgScore >= 50 ? ConsoleColor.Yellow : ConsoleColor.DarkYellow;
+
+                Console.ForegroundColor = color;
+                Console.Write($"    {bandLabel,-20}");
+                Console.ResetColor();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write($" Avg: {band.AvgScore:F0}/100");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  |  {band.TopCandidateCount}/{band.TotalCount} top ({pct:F0}%)");
+                Console.ResetColor();
+            }
+        }
+
+        // 4. Remote Policy Positioning
+        var remoteAnalysis = report.Assessments
+            .GroupBy(a => a.Vacancy.RemotePolicy)
+            .Select(g => new
+            {
+                Policy = g.Key,
+                AvgScore = g.Average(a => a.CompetitivenessScore),
+                TopCandidateCount = g.Count(a => a.Tier == "Top Candidate"),
+                TotalCount = g.Count()
+            })
+            .OrderByDescending(x => x.AvgScore)
+            .ToList();
+
+        if (remoteAnalysis.Count > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine("\n  Competitiveness by Work Arrangement:");
+            Console.ResetColor();
+
+            foreach (var remote in remoteAnalysis)
+            {
+                var pct = remote.TotalCount > 0 ? (double)remote.TopCandidateCount / remote.TotalCount * 100 : 0;
+                var color = remote.AvgScore >= 65 ? ConsoleColor.Green : remote.AvgScore >= 50 ? ConsoleColor.Yellow : ConsoleColor.DarkYellow;
+
+                Console.ForegroundColor = color;
+                Console.Write($"    {remote.Policy,-20}");
+                Console.ResetColor();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write($" Avg: {remote.AvgScore:F0}/100");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  |  {remote.TopCandidateCount}/{remote.TotalCount} top ({pct:F0}%)");
+                Console.ResetColor();
+            }
+        }
+
+        // 5. Seniority Sweet Spot
+        var seniorityAnalysis = report.Assessments
+            .Where(a => a.Vacancy.SeniorityLevel != Core.Enums.SeniorityLevel.Unknown)
+            .GroupBy(a => a.Vacancy.SeniorityLevel)
+            .Select(g => new
+            {
+                Level = g.Key,
+                AvgScore = g.Average(a => a.CompetitivenessScore),
+                TopCandidateCount = g.Count(a => a.Tier == "Top Candidate"),
+                TotalCount = g.Count()
+            })
+            .OrderByDescending(x => x.AvgScore)
+            .ToList();
+
+        if (seniorityAnalysis.Count > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine("\n  Seniority Sweet Spot:");
+            Console.ResetColor();
+
+            foreach (var seniority in seniorityAnalysis)
+            {
+                var pct = seniority.TotalCount > 0 ? (double)seniority.TopCandidateCount / seniority.TotalCount * 100 : 0;
+                var color = seniority.AvgScore >= 65 ? ConsoleColor.Green : seniority.AvgScore >= 50 ? ConsoleColor.Yellow : ConsoleColor.DarkYellow;
+
+                Console.ForegroundColor = color;
+                Console.Write($"    {seniority.Level,-20}");
+                Console.ResetColor();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write($" Avg: {seniority.AvgScore:F0}/100");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  |  {seniority.TopCandidateCount}/{seniority.TotalCount} top ({pct:F0}%)");
+                Console.ResetColor();
+            }
+
+            var bestLevel = seniorityAnalysis.FirstOrDefault();
+            if (bestLevel != null)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"\n    → Focus on {bestLevel.Level} roles for highest success rate");
+                Console.ResetColor();
+            }
+        }
+
+        // 6. Recommended Actions
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("\n  Market Positioning Recommendations:");
+        Console.ResetColor();
+
+        var topGeo = geoAnalysis.FirstOrDefault();
+        if (topGeo != null && topGeo.AvgScore >= 65)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"    ✓ You're strongest in {topGeo.Country} — prioritize roles there");
+            Console.ResetColor();
+        }
+
+        if (skillImpact.Count > 0)
+        {
+            var topSkill = skillImpact.First();
+            var potentialIncrease = topSkill.PotentialScore - topSkill.AvgScoreWithoutSkill;
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"    → Learning {topSkill.SkillName} could boost your avg score by ~{potentialIncrease:F0} points");
+            Console.ResetColor();
+        }
+
+        var bestBand = salaryBands.OrderByDescending(b => b.AvgScore).FirstOrDefault();
+        if (bestBand != null)
+        {
+            var bandLabel = bestBand.Band switch
+            {
+                0 => "under $60k",
+                1 => "$60k-$100k",
+                2 => "$100k-$150k",
+                3 => "$150k-$200k",
+                _ => "over $200k"
+            };
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"    ℹ You're most competitive in the {bandLabel} salary range");
+            Console.ResetColor();
+        }
+    }
+
+    private static List<SkillGapImpact> AnalyzeSkillGapImpact(CompetitivenessReport report)
+    {
+        // Find skills that appear frequently in "missing" but user doesn't have
+        var missingSkillFrequency = report.Assessments
+            .Where(a => a.WeaknessFactors.Any(w => w.StartsWith("Missing required skill:", StringComparison.OrdinalIgnoreCase)))
+            .SelectMany(a => a.WeaknessFactors
+                .Where(w => w.StartsWith("Missing required skill:", StringComparison.OrdinalIgnoreCase))
+                .Select(w => w.Replace("Missing required skill:", "").Trim()))
+            .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                Skill = g.Key,
+                MissingCount = g.Count()
+            })
+            .Where(x => x.MissingCount >= 3)
+            .ToList();
+
+        var impacts = new List<SkillGapImpact>();
+
+        foreach (var missing in missingSkillFrequency)
+        {
+            var rolesWithoutSkill = report.Assessments
+                .Where(a => a.WeaknessFactors.Any(w => w.Contains(missing.Skill, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (rolesWithoutSkill.Count == 0)
+                continue;
+
+            var avgScore = rolesWithoutSkill.Average(a => a.CompetitivenessScore);
+
+            // Estimate potential score increase (assume skill would add 15-25 points)
+            var potentialScore = Math.Min(100, avgScore + 20);
+
+            impacts.Add(new SkillGapImpact(
+                SkillName: missing.Skill,
+                MissingCount: missing.MissingCount,
+                AvgScoreWithoutSkill: avgScore,
+                PotentialScore: potentialScore));
+        }
+
+        return impacts
+            .OrderByDescending(i => i.PotentialScore - i.AvgScoreWithoutSkill)
+            .ThenByDescending(i => i.MissingCount)
+            .ToList();
+    }
+
+    private static int ClassifySalaryBand(decimal salaryMax)
+    {
+        return salaryMax switch
+        {
+            < 60_000 => 0,
+            < 100_000 => 1,
+            < 150_000 => 2,
+            < 200_000 => 3,
+            _ => 4
+        };
+    }
+
+    private sealed record SkillGapImpact(
+        string SkillName,
+        int MissingCount,
+        double AvgScoreWithoutSkill,
+        double PotentialScore);
 
     private static string? FindLatestVacanciesFile()
     {

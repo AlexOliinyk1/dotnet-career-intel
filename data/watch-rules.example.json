@@ -1,0 +1,75 @@
+{
+  "rules": [
+    {
+      "name": "Dream Companies",
+      "enabled": true,
+      "priority": 10,
+      "companies": ["Google", "Microsoft", "Amazon", "Meta", "Apple"],
+      "mustHaveAnySkill": ["C#", ".NET", "TypeScript"],
+      "minSalary": 100000,
+      "description": "Alert on any position at FAANG companies with .NET or TypeScript"
+    },
+    {
+      "name": "Senior .NET Remote",
+      "enabled": true,
+      "priority": 9,
+      "mustHaveSkills": [".NET", "C#"],
+      "seniorityLevels": ["Senior", "Lead", "Principal"],
+      "remoteOnly": true,
+      "minSalary": 80000,
+      "description": "Senior+ .NET roles that are fully remote"
+    },
+    {
+      "name": "Azure + Kubernetes Jobs",
+      "enabled": true,
+      "priority": 8,
+      "mustHaveSkills": ["Azure", "Kubernetes"],
+      "mustHaveAnySkill": ["C#", ".NET Core", "Docker"],
+      "excludeTitleKeywords": ["intern", "junior"],
+      "description": "Cloud-native positions combining Azure and K8s"
+    },
+    {
+      "name": "Avoid Agencies",
+      "enabled": false,
+      "priority": 3,
+      "excludeCompanies": ["Epam", "GlobalLogic", "Luxoft", "SoftServe"],
+      "description": "Filter out large outsourcing agencies (disabled by default)"
+    },
+    {
+      "name": "High-Paying Architect Roles",
+      "enabled": true,
+      "priority": 9,
+      "titleKeywords": ["architect", "principal", "staff engineer"],
+      "minSalary": 120000,
+      "mustHaveAnySkill": [".NET", "Azure", "AWS", "System Design"],
+      "description": "Senior architecture positions with strong compensation"
+    },
+    {
+      "name": "Startup Opportunities",
+      "enabled": true,
+      "priority": 7,
+      "titleKeywords": ["founding", "early-stage", "startup"],
+      "mustHaveSkills": [".NET"],
+      "remoteOnly": true,
+      "description": "Early-stage startup roles for hands-on .NET developers"
+    },
+    {
+      "name": "DevOps + .NET",
+      "enabled": true,
+      "priority": 8,
+      "mustHaveSkills": ["DevOps", ".NET"],
+      "mustHaveAnySkill": ["Kubernetes", "Docker", "Azure DevOps", "GitHub Actions"],
+      "excludeTitleKeywords": ["manual tester", "qa only"],
+      "description": "DevOps roles that value .NET expertise"
+    },
+    {
+      "name": "Relocation to Europe",
+      "enabled": false,
+      "priority": 6,
+      "titleKeywords": ["relocation", "visa sponsorship", "move to"],
+      "mustHaveAnySkill": [".NET", "C#"],
+      "minSalary": 60000,
+      "description": "European relocation opportunities (disabled by default)"
+    }
+  ]
+}
