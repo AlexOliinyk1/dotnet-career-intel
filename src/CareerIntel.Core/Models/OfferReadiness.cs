@@ -27,6 +27,15 @@ public sealed class SkillGap
     public int RequiredLevel { get; set; } // 1-5
     public double ImpactWeight { get; set; } // how much this gap hurts offer probability
     public string RecommendedAction { get; set; } = string.Empty;
+    public bool IsCritical { get; set; } // Is this a required skill vs. nice-to-have?
+    public int HoursToLearn { get; set; } // Estimated hours to bridge gap
+
+    // Alias for backwards compatibility
+    public int TargetLevel
+    {
+        get => RequiredLevel;
+        set => RequiredLevel = value;
+    }
 }
 
 public sealed class PrepAction

@@ -1,0 +1,395 @@
+{
+  "microsoft|senior .net developer": {
+    "Company": "Microsoft",
+    "Role": "Senior .NET Developer",
+    "Questions": [
+      {
+        "Id": "722533f0-5ce6-4ea5-8184-f424c06f012f",
+        "Question": "Explain the difference between IEnumerable and IQueryable in C#",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 2,
+        "Category": 4,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.325188+00:00",
+        "InterviewDate": "2026-02-03T19:28:37.3252516+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "LINQ",
+          "Deferred Execution"
+        ],
+        "RequiredSkills": [
+          "C#",
+          ".NET",
+          "System Design"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 94,
+        "TimesAsked": 16,
+        "InterviewerTips": "",
+        "IsVerified": true,
+        "Tags": []
+      },
+      {
+        "Id": "bd134917-345c-46ba-bba3-c10fba999a0f",
+        "Question": "What is dependency injection and why use it?",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 2,
+        "Category": 7,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3259363+00:00",
+        "InterviewDate": "2025-02-13T19:28:37.3259364+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "Dependency Injection",
+          "SOLID"
+        ],
+        "RequiredSkills": [
+          "C#",
+          ".NET",
+          "System Design"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 132,
+        "TimesAsked": 27,
+        "InterviewerTips": "",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "890a3350-9e5d-4c3a-a6d8-110adc795df9",
+        "Question": "How does async/await work in .NET?",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 2,
+        "Category": 5,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3259515+00:00",
+        "InterviewDate": "2026-01-10T19:28:37.3259516+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "Async/Await",
+          "Threading"
+        ],
+        "RequiredSkills": [
+          "C#",
+          ".NET",
+          "System Design"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 192,
+        "TimesAsked": 39,
+        "InterviewerTips": "",
+        "IsVerified": true,
+        "Tags": []
+      },
+      {
+        "Id": "8245c529-0ba7-4156-94e2-d8672b4fc8be",
+        "Question": "Explain the garbage collector in .NET",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 2,
+        "Category": 5,
+        "Difficulty": 3,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3259535+00:00",
+        "InterviewDate": "2025-12-28T19:28:37.3259535+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "Garbage Collection",
+          "Memory Management"
+        ],
+        "RequiredSkills": [
+          "C#",
+          ".NET",
+          "System Design"
+        ],
+        "EstimatedMinutes": 15,
+        "Upvotes": 97,
+        "TimesAsked": 12,
+        "InterviewerTips": "",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "57fac2af-867d-47e7-aa7c-a9cda72b61f3",
+        "Question": "What are the SOLID principles? Give examples.",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 2,
+        "Category": 7,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3259548+00:00",
+        "InterviewDate": "2025-10-09T19:28:37.3259548+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "SOLID",
+          "Design Patterns"
+        ],
+        "RequiredSkills": [
+          "C#",
+          ".NET",
+          "System Design"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 105,
+        "TimesAsked": 33,
+        "InterviewerTips": "",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "4ae9cb7c-bb52-4377-b0ad-863bbba27d2c",
+        "Question": "How would you optimize a slow SQL query?",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 2,
+        "Category": 6,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.325958+00:00",
+        "InterviewDate": "2025-03-04T19:28:37.3259581+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "SQL Optimization",
+          "Indexing"
+        ],
+        "RequiredSkills": [
+          "C#",
+          ".NET",
+          "System Design"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 68,
+        "TimesAsked": 48,
+        "InterviewerTips": "",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "71e07ab8-a41e-4573-beb7-0426cb5bfbe3",
+        "Question": "Describe your experience with microservices",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 2,
+        "Category": 1,
+        "Difficulty": 3,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3259592+00:00",
+        "InterviewDate": "2025-04-12T19:28:37.3259592+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "Microservices",
+          "Distributed Systems"
+        ],
+        "RequiredSkills": [
+          "C#",
+          ".NET",
+          "System Design"
+        ],
+        "EstimatedMinutes": 15,
+        "Upvotes": 140,
+        "TimesAsked": 44,
+        "InterviewerTips": "",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "849b1f54-3de7-40a6-b24d-e6069654401f",
+        "Question": "What\u0027s the difference between value types and reference types in C#?",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 2,
+        "Category": 4,
+        "Difficulty": 1,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3259604+00:00",
+        "InterviewDate": "2025-12-16T19:28:37.3259604+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "C#",
+          "Memory Management"
+        ],
+        "RequiredSkills": [
+          "C#",
+          ".NET",
+          "System Design"
+        ],
+        "EstimatedMinutes": 5,
+        "Upvotes": 192,
+        "TimesAsked": 31,
+        "InterviewerTips": "",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "ef42a086-0634-4530-b6f2-2b21e2760952",
+        "Question": "Tell me about a time you faced a difficult technical challenge",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 5,
+        "Category": 2,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3259619+00:00",
+        "InterviewDate": "2025-05-05T19:28:37.3259619+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "STAR Framework",
+          "Soft Skills"
+        ],
+        "RequiredSkills": [
+          "Communication",
+          "Problem Solving"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 24,
+        "TimesAsked": 70,
+        "InterviewerTips": "Use STAR framework: Situation, Task, Action, Result",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "dd43f42f-c51d-4af0-9951-5d7750acae3c",
+        "Question": "Describe a situation where you had to debug a complex production issue",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 5,
+        "Category": 2,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3260298+00:00",
+        "InterviewDate": "2025-07-03T19:28:37.3260299+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "STAR Framework",
+          "Soft Skills"
+        ],
+        "RequiredSkills": [
+          "Communication",
+          "Problem Solving"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 62,
+        "TimesAsked": 23,
+        "InterviewerTips": "Use STAR framework: Situation, Task, Action, Result",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "ec5633a4-2b62-48db-aac3-a50e54b0f60a",
+        "Question": "How do you handle disagreements with team members?",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 5,
+        "Category": 2,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.3260319+00:00",
+        "InterviewDate": "2025-06-27T19:28:37.326032+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "STAR Framework",
+          "Soft Skills"
+        ],
+        "RequiredSkills": [
+          "Communication",
+          "Problem Solving"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 53,
+        "TimesAsked": 21,
+        "InterviewerTips": "Use STAR framework: Situation, Task, Action, Result",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "b465d497-8ffa-4f30-b2dd-d8f43f9ab3ac",
+        "Question": "Tell me about a project you\u0027re most proud of",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 5,
+        "Category": 2,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.326033+00:00",
+        "InterviewDate": "2025-09-14T19:28:37.326033+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "STAR Framework",
+          "Soft Skills"
+        ],
+        "RequiredSkills": [
+          "Communication",
+          "Problem Solving"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 34,
+        "TimesAsked": 12,
+        "InterviewerTips": "Use STAR framework: Situation, Task, Action, Result",
+        "IsVerified": false,
+        "Tags": []
+      },
+      {
+        "Id": "55cb9998-1c71-419b-9d85-2ab16b8192e4",
+        "Question": "Describe a time when you had to learn a new technology quickly",
+        "Company": "Microsoft",
+        "Role": "Senior .NET Developer",
+        "Round": 5,
+        "Category": 2,
+        "Difficulty": 2,
+        "Source": "Glassdoor",
+        "SourceUrl": "https://www.glassdoor.com/Interview/Microsoft-Interview-Questions.htm",
+        "ScrapedDate": "2026-02-10T19:28:37.326034+00:00",
+        "InterviewDate": "2025-07-20T19:28:37.326034+00:00",
+        "ExpectedAnswer": "",
+        "KeyConcepts": [
+          "STAR Framework",
+          "Soft Skills"
+        ],
+        "RequiredSkills": [
+          "Communication",
+          "Problem Solving"
+        ],
+        "EstimatedMinutes": 10,
+        "Upvotes": 42,
+        "TimesAsked": 53,
+        "InterviewerTips": "Use STAR framework: Situation, Task, Action, Result",
+        "IsVerified": false,
+        "Tags": []
+      }
+    ],
+    "LastUpdated": "2026-02-10T19:28:37.338208+00:00",
+    "TotalQuestions": 13,
+    "QuestionsByCategory": {
+      "CSharp": 2,
+      "Architecture": 2,
+      "DotNet": 2,
+      "Database": 1,
+      "SystemDesign": 1,
+      "Behavioral": 5
+    },
+    "QuestionsByDifficulty": {
+      "Medium": 10,
+      "Hard": 2,
+      "Easy": 1
+    }
+  }
+}

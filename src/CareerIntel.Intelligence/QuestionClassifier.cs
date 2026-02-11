@@ -224,6 +224,38 @@ public sealed class QuestionClassifier(ILogger<QuestionClassifier> logger)
     }
 
     /// <summary>
+    /// Detect if a scraped question is a duplicate of any static interview bank question,
+    /// using Jaccard similarity of word tokens (threshold = 0.6).
+    /// </summary>
+    public bool IsDuplicate(ScrapedInterviewQuestion question, IReadOnlyList<StaticInterviewQuestion> existing)
+    {
+        var questionWords = Tokenize(question.Question);
+
+        if (questionWords.Count == 0)
+            return false;
+
+        foreach (var existingQuestion in existing)
+        {
+            var existingWords = Tokenize(existingQuestion.Question);
+
+            if (existingWords.Count == 0)
+                continue;
+
+            var similarity = JaccardSimilarity(questionWords, existingWords);
+
+            if (similarity >= DuplicateJaccardThreshold)
+            {
+                logger.LogDebug(
+                    "Duplicate detected: scraped={ScrapedId} matches static bank question (Jaccard={Similarity:F3})",
+                    question.Id, similarity);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Check if a scraped question is a duplicate of any classified (dynamic) question,
     /// using Jaccard similarity of word tokens (threshold = 0.6).
     /// </summary>

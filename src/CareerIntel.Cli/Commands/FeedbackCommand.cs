@@ -209,6 +209,144 @@ public static class FeedbackCommand
             }
             Console.ResetColor();
         }
+
+        // INTEGRATION 2.4: Failure → Micro-Learning → Re-Decide Loop
+        if (interviewFeedback.WeakAreas.Count > 0)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("=== Failure Traceability & Micro-Learning Plan ===");
+            Console.ResetColor();
+
+            var traceEngine = new FailureTraceabilityEngine();
+            var failureAnalysis = traceEngine.TraceFailure(interviewFeedback);
+
+            foreach (var trace in failureAnalysis.Traces)
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"  ❌ Weak: {trace.Question}");
+                Console.ResetColor();
+
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"     → Root Cause: {trace.MissingConcept}");
+                Console.ResetColor();
+
+                Console.WriteLine($"     → Required Skills: {string.Join(", ", trace.RequiredSkills)}");
+                Console.WriteLine($"     → Estimated Time: {trace.EstimatedHoursToFix}h");
+
+                foreach (var unit in trace.LearningUnits)
+                {
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"       📚 {unit.Title} ({unit.Duration}h - {unit.Type})");
+                    Console.ResetColor();
+                    Console.WriteLine($"          {unit.Url}");
+
+                    if (unit.Exercises.Count > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        Console.WriteLine($"          Exercises:");
+                        foreach (var exercise in unit.Exercises)
+                        {
+                            Console.WriteLine($"            • {exercise}");
+                        }
+                        Console.ResetColor();
+                    }
+                }
+            }
+
+            // Update question confidence based on failure
+            var confidenceTracker = new QuestionConfidenceTracker();
+            foreach (var trace in failureAnalysis.Traces)
+            {
+                var performance = new QuestionPerformance
+                {
+                    Question = trace.Question,
+                    Category = trace.MissingConcept,
+                    ConfidenceBefore = 0, // Unknown before
+                    PerformanceDuring = 30, // Failed = low performance
+                    WhatWentWrong = $"Missing: {trace.MissingConcept}",
+                    MissingConcepts = [trace.MissingConcept],
+                    MissingSkills = trace.RequiredSkills
+                };
+                confidenceTracker.RecordInterviewPerformance(trace.Question, performance);
+                logger.LogDebug("Decreased confidence for question: {Question}", trace.Question);
+            }
+
+            // Re-run decide if there's a vacancy associated
+            if (!string.IsNullOrEmpty(interviewFeedback.VacancyId))
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("=== Re-Running Decision Engine ===");
+                Console.ResetColor();
+
+                try
+                {
+                    // Load vacancies to find the one we interviewed for
+                    var vacanciesPath = FindLatestVacanciesFile();
+                    if (!string.IsNullOrEmpty(vacanciesPath) && File.Exists(vacanciesPath))
+                    {
+                        var vacanciesJson = await File.ReadAllTextAsync(vacanciesPath);
+                        var vacancies = JsonSerializer.Deserialize<List<JobVacancy>>(vacanciesJson,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+
+                        var targetVacancy = vacancies.FirstOrDefault(v => v.Id == interviewFeedback.VacancyId);
+                        if (targetVacancy != null)
+                        {
+                            var decisionEngine = new ApplicationDecisionEngine(null!, new ScoringEngine());
+                            var decision = decisionEngine.Decide(targetVacancy, profile);
+                            DecisionCache.SetDecision(targetVacancy.Id, decision);
+
+                            var verdictBadge = decision.Verdict switch
+                            {
+                                ApplicationVerdict.ApplyNow => "🟢 APPLY NOW",
+                                ApplicationVerdict.LearnThenApply => $"🟡 LEARN ({decision.EstimatedLearningHours}h)",
+                                ApplicationVerdict.Skip => "🔴 SKIP",
+                                _ => "❓ UNKNOWN"
+                            };
+
+                            Console.WriteLine($"  Updated verdict: {verdictBadge}");
+                            Console.WriteLine($"  Readiness: {decision.ReadinessScore}%");
+                            Console.WriteLine($"  Reasoning: {decision.Reasoning}");
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            Console.WriteLine($"  Warning: Vacancy {interviewFeedback.VacancyId} not found in latest scan");
+                            Console.ResetColor();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to re-run decision engine");
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"  Warning: Could not re-run decision engine: {ex.Message}");
+                    Console.ResetColor();
+                }
+            }
+
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("💡 Next Steps:");
+            Console.ResetColor();
+            Console.WriteLine($"  1. Focus on {failureAnalysis.Traces.Count} micro-learning task(s) above (≤60 min each)");
+            Console.WriteLine($"  2. Complete exercises for each learning unit");
+            Console.WriteLine($"  3. Run: career-intel questions --update <question>:<confidence>");
+            Console.WriteLine($"  4. Run: career-intel decide (will update readiness based on new confidence)");
+        }
+    }
+
+    private static string? FindLatestVacanciesFile()
+    {
+        if (!Directory.Exists(Program.DataDirectory))
+            return null;
+
+        return Directory.GetFiles(Program.DataDirectory, "vacancies-*.json")
+            .OrderByDescending(f => f)
+            .FirstOrDefault();
     }
 
     private static async Task<List<InterviewFeedback>> LoadFeedbackListAsync(string path)

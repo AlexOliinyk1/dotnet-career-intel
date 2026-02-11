@@ -46,9 +46,24 @@ public sealed class JustJoinItScraper(HttpClient httpClient, ILogger<JustJoinItS
             {
                 await Task.Delay(RequestDelay, cancellationToken);
 
-                logger.LogDebug("[JustJoinIt] Trying API endpoint: {Endpoint}", apiEndpoint);
+                // Build query parameters for filtering
+                // Based on JustJoin.it URL: /job-offers/remote/net?experience-level=c-level,senior&with-salary=yes&orderBy=DESC&sortBy=salary
+                var queryParams = new List<string>
+                {
+                    "experience_level=senior,c-level", // Senior and C-level positions
+                    "with_salary=true",                // Only jobs with salary
+                    "orderBy=DESC",                    // Descending order
+                    "sortBy=salary",                   // Sort by salary (highest first)
+                    "employment_type=permanent,b2b",   // Permanent or B2B contracts
+                    "technology=.net"                  // .NET technology filter
+                };
 
-                var response = await httpClient.GetAsync(apiEndpoint, cancellationToken);
+                var queryString = string.Join("&", queryParams);
+                var fullUrl = $"{apiEndpoint}?{queryString}";
+
+                logger.LogDebug("[JustJoinIt] Trying API endpoint: {Endpoint}", fullUrl);
+
+                var response = await httpClient.GetAsync(fullUrl, cancellationToken);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -69,14 +84,22 @@ public sealed class JustJoinItScraper(HttpClient httpClient, ILogger<JustJoinItS
                 logger.LogInformation("[JustJoinIt] Successfully fetched {Count} offers from {Endpoint}",
                     offers.Count, apiEndpoint);
 
-                // Filter to .NET-relevant offers and limit to maxPages * 25
+                // Filter to .NET-relevant offers (API already filtered by seniority and salary)
                 var netOffers = offers
                     .Where(o => IsNetRelated(o))
+                    .Where(o => o.Salary != null || (o.EmploymentTypes?.Any(e => e.Salary != null) ?? false)) // Ensure salary present
                     .Take(maxPages * 25)
                     .Select(MapToVacancy)
+                    .OrderByDescending(v => v.SalaryMax ?? 0) // Sort by highest salary first
                     .ToList();
 
-                logger.LogInformation("[JustJoinIt] Filtered to {Count} .NET-relevant offers", netOffers.Count);
+                logger.LogInformation("[JustJoinIt] Filtered to {Count} .NET-relevant senior offers with salary", netOffers.Count);
+
+                // Log top 5 salaries for verification
+                var topSalaries = netOffers.Take(5).Select(v =>
+                    $"{v.Title} - {v.SalaryMax:N0} {v.SalaryCurrency}").ToList();
+                logger.LogInformation("[JustJoinIt] Top salaries: {Salaries}", string.Join(" | ", topSalaries));
+
                 return netOffers;
             }
             catch (JsonException ex)

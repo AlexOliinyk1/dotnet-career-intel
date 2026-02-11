@@ -443,7 +443,7 @@ public sealed class KnowledgeBaseManager(
     //  Conversion helpers
     // ─────────────────────────────────────────────────────────────
 
-    private static KnowledgeQuestion ConvertStaticQuestion(InterviewQuestion q) =>
+    private static KnowledgeQuestion ConvertStaticQuestion(StaticInterviewQuestion q) =>
         new(
             Question: q.Question,
             Answer: q.ExpectedAnswer,

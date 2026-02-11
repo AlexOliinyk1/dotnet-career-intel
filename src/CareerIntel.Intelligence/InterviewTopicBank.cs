@@ -4,11 +4,11 @@ public sealed record TopicArea(
     string Id,
     string Name,
     string Description,
-    IReadOnlyList<InterviewQuestion> Questions,
+    IReadOnlyList<StaticInterviewQuestion> Questions,
     IReadOnlyList<string> KeyConcepts,
     IReadOnlyList<LearningResource> Resources);
 
-public sealed record InterviewQuestion(
+public sealed record StaticInterviewQuestion(
     string Question,
     string ExpectedAnswer,
     string Difficulty,

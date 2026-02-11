@@ -58,7 +58,16 @@ public static class Program
             CompareOffersCommand.Create(),
             LearnPathCommand.Create(),
             PredictCommand.Create(),
-            ScheduleCommand.Create()
+            ScheduleCommand.Create(),
+            DecideCommand.Create(),
+            QuestionsCommand.Create(),
+            MicroLearnCommand.Create(),
+            StrategyCommand.Create(),
+            VerifyCommand.Create(),
+            InterviewQuestionsCommand.Create(),
+            DocumentationCommand.Create(),
+            StackAnalysisCommand.Create(),
+            RemoteJobsCommand.Create()
         };
 
         var dataOption = new Option<string>(

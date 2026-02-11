@@ -68,10 +68,45 @@ public static class LearnCommand
         }
 
         var vacanciesJson = await File.ReadAllTextAsync(inputPath);
-        var vacancies = JsonSerializer.Deserialize<List<JobVacancy>>(vacanciesJson, new JsonSerializerOptions
+        var allVacancies = JsonSerializer.Deserialize<List<JobVacancy>>(vacanciesJson, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         }) ?? [];
+
+        // ENFORCEMENT: Filter to only LEARN_THEN_APPLY verdicts
+        var beforeCount = allVacancies.Count;
+        var vacancies = allVacancies.Where(v =>
+        {
+            if (DecisionCache.CanLearn(v.Id, out var reason))
+            {
+                logger.LogDebug("Included {VacancyId} for learning: {Reason}", v.Id, reason);
+                return true;
+            }
+            logger.LogDebug("Excluded {VacancyId} from learning: {Reason}", v.Id, reason);
+            return false;
+        }).ToList();
+
+        if (vacancies.Count == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"❌ NO POSITIONS NEED LEARNING");
+            Console.WriteLine($"\nAll {beforeCount} positions blocked - no LEARN_THEN_APPLY verdicts.");
+            Console.WriteLine($"\nNext steps:");
+            Console.WriteLine($"  • Positions with APPLY_NOW verdict: run 'career-intel apply'");
+            Console.WriteLine($"  • Positions with SKIP verdict: don't waste time learning");
+            Console.WriteLine($"  • No decisions yet: run 'career-intel decide' first");
+            Console.ResetColor();
+            return;
+        }
+
+        if (vacancies.Count < beforeCount)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"\n⚠️ DECISION FILTER: {beforeCount} → {vacancies.Count} positions require learning");
+            Console.WriteLine($"   ({beforeCount - vacancies.Count} positions ready to apply or should skip)");
+            Console.ResetColor();
+            Console.WriteLine();
+        }
 
         // Load interview history
         var feedbackPath = Path.Combine(Program.DataDirectory, "interview-feedback.json");

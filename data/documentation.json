@@ -1,0 +1,111 @@
+{
+  "c#|async/await": {
+    "Topic": "Async/Await",
+    "Technology": "C#",
+    "Articles": [
+      {
+        "Id": "9b74e5eb-40f9-4472-9c7c-34c19c742443",
+        "Title": "Asynchronous programming with async and await",
+        "Url": "https://learn.microsoft.com/en-us/dotnet/csharp/asynchronous-programming-with-async-and-await",
+        "Source": "Microsoft Learn",
+        "Technology": "C#",
+        "Category": "Tutorial",
+        "Difficulty": 2,
+        "Summary": "Learn about asynchronous programming in C# using the async and await keywords. Write responsive applications that don\u0027t block the main thread.",
+        "Content": "Learn about asynchronous programming in C# using the async and await keywords. Write responsive applications that don\u0027t block the main thread.\n\nThis is a comprehensive guide covering all aspects of the topic.",
+        "Topics": [
+          "Async/Await",
+          "Task",
+          "Threading"
+        ],
+        "Tags": [
+          "Tutorial",
+          "intermediate"
+        ],
+        "Prerequisites": [],
+        "EstimatedMinutes": 45,
+        "ScrapedDate": "2026-02-10T19:36:16.4534539+00:00",
+        "LastUpdated": "2025-11-19T19:36:16.4535207+00:00",
+        "RelatedArticles": [],
+        "CodeSamples": [],
+        "Author": "Microsoft",
+        "Relevance": 86
+      },
+      {
+        "Id": "dcf3cd2e-3fd6-445a-b195-c167bccb1417",
+        "Title": "Task-based asynchronous pattern (TAP)",
+        "Url": "https://learn.microsoft.com/en-us/dotnet/csharp/task-based-asynchronous-pattern-tap",
+        "Source": "Microsoft Learn",
+        "Technology": "C#",
+        "Category": "Conceptual",
+        "Difficulty": 3,
+        "Summary": "Deep dive into the Task-based asynchronous pattern, the recommended approach for asynchronous programming in .NET.",
+        "Content": "Deep dive into the Task-based asynchronous pattern, the recommended approach for asynchronous programming in .NET.\n\nThis is a comprehensive guide covering all aspects of the topic.",
+        "Topics": [
+          "Async/Await",
+          "Task",
+          "Best Practices"
+        ],
+        "Tags": [
+          "Conceptual",
+          "advanced"
+        ],
+        "Prerequisites": [],
+        "EstimatedMinutes": 60,
+        "ScrapedDate": "2026-02-10T19:36:16.4549855+00:00",
+        "LastUpdated": "2025-12-29T19:36:16.4549855+00:00",
+        "RelatedArticles": [],
+        "CodeSamples": [],
+        "Author": "Microsoft",
+        "Relevance": 97
+      }
+    ],
+    "TopicFrequency": {
+      "Async/Await": 2,
+      "Task": 2,
+      "Threading": 1,
+      "Best Practices": 1
+    },
+    "LastUpdated": "2026-02-10T19:36:16.4577484+00:00"
+  },
+  "c#|solid principles": {
+    "Topic": "SOLID Principles",
+    "Technology": "C#",
+    "Articles": [
+      {
+        "Id": "e8491a66-dcd5-423f-b9ba-6f9565eadd25",
+        "Title": "SOLID principles in C#",
+        "Url": "https://learn.microsoft.com/en-us/dotnet/csharp/solid-principles-in-c#",
+        "Source": "Microsoft Learn",
+        "Technology": "C#",
+        "Category": "Conceptual",
+        "Difficulty": 3,
+        "Summary": "Learn the five SOLID principles of object-oriented design and how to apply them in C# applications.",
+        "Content": "Learn the five SOLID principles of object-oriented design and how to apply them in C# applications.\n\nThis is a comprehensive guide covering all aspects of the topic.",
+        "Topics": [
+          "SOLID Principles",
+          "Design Patterns",
+          "Architecture"
+        ],
+        "Tags": [
+          "Conceptual",
+          "advanced"
+        ],
+        "Prerequisites": [],
+        "EstimatedMinutes": 50,
+        "ScrapedDate": "2026-02-10T19:36:55.6459702+00:00",
+        "LastUpdated": "2025-11-30T19:36:55.6459722+00:00",
+        "RelatedArticles": [],
+        "CodeSamples": [],
+        "Author": "Microsoft",
+        "Relevance": 89
+      }
+    ],
+    "TopicFrequency": {
+      "SOLID Principles": 1,
+      "Design Patterns": 1,
+      "Architecture": 1
+    },
+    "LastUpdated": "2026-02-10T19:36:55.6478803+00:00"
+  }
+}

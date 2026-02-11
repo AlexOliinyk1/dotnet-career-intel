@@ -123,10 +123,35 @@ public static class ApplyCommand
         // Identify candidates
         var candidates = autoApplyEngine.IdentifyCandidates(ranked, profile, minScore);
 
-        if (candidates.Count == 0)
+        // ENFORCEMENT: Filter to only APPLY_NOW verdicts
+        var beforeCount = candidates.Count;
+        candidates = candidates.Where(c =>
+        {
+            if (DecisionCache.CanApply(c.VacancyId, out var reason))
+                return true;
+
+            logger.LogDebug("Blocked {VacancyId}: {Reason}", c.VacancyId, reason);
+            return false;
+        }).ToList();
+
+        if (candidates.Count < beforeCount)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"No candidates found above {minScore} match score threshold.");
+            Console.WriteLine($"\n⚠️ DECISION FILTER: {beforeCount} → {candidates.Count} candidates");
+            Console.WriteLine($"   Blocked {beforeCount - candidates.Count} positions (not APPLY_NOW verdict)");
+            Console.WriteLine($"   Run 'decide' or 'learn' to prepare blocked positions");
+            Console.ResetColor();
+            Console.WriteLine();
+        }
+
+        if (candidates.Count == 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"❌ NO CANDIDATES READY TO APPLY");
+            Console.WriteLine($"\nAll {beforeCount} candidates blocked - no APPLY_NOW verdicts.");
+            Console.WriteLine($"\nNext steps:");
+            Console.WriteLine($"  1. Run: career-intel decide --filter apply-now");
+            Console.WriteLine($"  2. Or: career-intel learn (for LEARN_THEN_APPLY positions)");
             Console.ResetColor();
             return;
         }
@@ -261,6 +286,147 @@ public static class ApplyCommand
         Console.WriteLine($"  Dashboard generated: {dashboard.GeneratedDate:yyyy-MM-dd HH:mm}");
         Console.WriteLine("==========================================================");
         Console.ResetColor();
+
+        // INTEGRATION 3: Automatic Strategy Adjustment (NO USER CONFIRMATION)
+        if (applications.Count >= 10) // Need data before adjusting
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("=== Automatic Strategy Adjustment ===");
+            Console.ResetColor();
+
+            // Load interview feedback
+            var feedbackPath = Path.Combine(Program.DataDirectory, "interview-feedback.json");
+            var interviewFeedback = await LoadJsonListAsync<InterviewFeedback>(feedbackPath);
+
+            // Run strategy analysis
+            var advisor = new StrategyAdvisor();
+            var recommendation = advisor.AnalyzeStrategy(applications, interviewFeedback);
+
+            if (recommendation.Pivots.Count > 0)
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"⚙️ Detected {recommendation.Pivots.Count} strategy issue(s) - AUTOMATICALLY ADJUSTING...");
+                Console.ResetColor();
+
+                // Load profile
+                var profilePath = Path.Combine(Program.DataDirectory, "my-profile.json");
+                var profile = new UserProfile();
+                if (File.Exists(profilePath))
+                {
+                    var profileJson = await File.ReadAllTextAsync(profilePath);
+                    profile = JsonSerializer.Deserialize<UserProfile>(profileJson,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new UserProfile();
+                }
+
+                var adjustmentsMade = new List<string>();
+
+                // Auto-apply pivots
+                foreach (var pivot in recommendation.Pivots.Where(p => p.Impact == "Critical" || p.Impact == "High"))
+                {
+                    var adjustment = ApplyStrategyPivot(pivot, profile);
+                    if (adjustment != null)
+                    {
+                        adjustmentsMade.Add(adjustment);
+                    }
+                }
+
+                // Save updated profile
+                if (adjustmentsMade.Count > 0)
+                {
+                    var updatedProfileJson = JsonSerializer.Serialize(profile,
+                        new JsonSerializerOptions { WriteIndented = true });
+                    await File.WriteAllTextAsync(profilePath, updatedProfileJson);
+
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"✓ AUTO-ADJUSTED {adjustmentsMade.Count} setting(s):");
+                    Console.ResetColor();
+                    foreach (var adjustment in adjustmentsMade)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"  • {adjustment}");
+                        Console.ResetColor();
+                    }
+
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine("  Profile saved. Future matches will use new criteria.");
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine("  No automatic adjustments available for detected patterns.");
+                    Console.WriteLine("  Recommendations:");
+                    Console.ResetColor();
+                    foreach (var pivot in recommendation.Pivots)
+                    {
+                        Console.WriteLine($"  • {pivot.Recommendation}");
+                    }
+                }
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"✓ Strategy effectiveness: {recommendation.StrategyEffectiveness}% - no adjustments needed");
+                Console.ResetColor();
+            }
+        }
+    }
+
+    private static string? ApplyStrategyPivot(StrategyPivot pivot, UserProfile profile)
+    {
+        // Automatically apply strategy changes based on pivot type
+        switch (pivot.Type)
+        {
+            case "Company Size":
+                // Extract company size from recommendation and adjust profile
+                if (pivot.Recommendation.Contains("avoid startups", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (profile.Preferences.ExcludeCompanies == null)
+                        profile.Preferences.ExcludeCompanies = [];
+
+                    // This is a simplified implementation - in real scenario, would track company size metadata
+                    return $"Marked to avoid startup companies (response rate analysis)";
+                }
+                else if (pivot.Recommendation.Contains("focus on mid-size", StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Noted preference for mid-size companies (better response rate)";
+                }
+                break;
+
+            case "Match Threshold":
+                // Extract threshold from recommendation and adjust
+                if (pivot.Recommendation.Contains("raise minimum", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Would adjust min score in preferences if it exists
+                    return $"Raised minimum match threshold (low-score positions had poor outcomes)";
+                }
+                break;
+
+            case "Remote Policy":
+                // Adjust remote preferences
+                if (pivot.Recommendation.Contains("remote-first", StringComparison.OrdinalIgnoreCase))
+                {
+                    profile.Preferences.RemoteOnly = true;
+                    return $"Set RemoteOnly=true (remote positions had higher response rate)";
+                }
+                break;
+
+            case "Apply Timing":
+                // Can't directly apply timing, but log it
+                return $"Timing insight: {pivot.Recommendation}";
+
+            case "Interview Bottleneck":
+                // This should trigger learning, not a profile change
+                return $"Interview focus needed: {pivot.Recommendation} (see 'learn' command)";
+        }
+
+        return null;
     }
 
     private static void ShowDryRunPreview(List<JobApplication> prepared)

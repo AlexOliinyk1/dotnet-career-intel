@@ -6,6 +6,7 @@ using CareerIntel.Core.Enums;
 using CareerIntel.Core.Interfaces;
 using CareerIntel.Core.Models;
 using CareerIntel.Notifications;
+using CareerIntel.Matching;
 
 namespace CareerIntel.Cli.Commands;
 
@@ -203,6 +204,19 @@ public static class MatchCommand
             return;
         }
 
+        // AUTO-RUN DECISION ENGINE (Integration 1: decide is MANDATORY)
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("🧠 Running decision engine on matches...\n");
+        Console.ResetColor();
+
+        var decisionEngine = new ApplicationDecisionEngine(null!, new ScoringEngine());
+        var profile = await LoadProfileAsync();
+        foreach (var vacancy in topMatches)
+        {
+            var decision = decisionEngine.Decide(vacancy, profile);
+            DecisionCache.SetDecision(vacancy.Id, decision);
+        }
+
         // Display results
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine($"=== Top {topMatches.Count} Matches ===");
@@ -245,6 +259,16 @@ public static class MatchCommand
 
     private static void PrintMatch(int rank, JobVacancy vacancy, MatchScore score)
     {
+        // Get decision verdict (ENFORCEMENT: show verdict badge)
+        var decision = DecisionCache.GetDecision(vacancy.Id);
+        var verdictBadge = decision?.Verdict switch
+        {
+            ApplicationVerdict.ApplyNow => "🟢 APPLY NOW",
+            ApplicationVerdict.LearnThenApply => $"🟡 LEARN ({decision.EstimatedLearningHours}h)",
+            ApplicationVerdict.Skip => "🔴 SKIP",
+            _ => ""
+        };
+
         var actionColor = score.RecommendedAction switch
         {
             RecommendedAction.Apply => ConsoleColor.Green,
@@ -259,6 +283,11 @@ public static class MatchCommand
         Console.Write($"[{score.OverallScore:F0}/100] ");
         Console.ForegroundColor = actionColor;
         Console.Write($"({score.ActionLabel}) ");
+        if (!string.IsNullOrEmpty(verdictBadge))
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.Write($"| {verdictBadge} ");
+        }
         Console.ResetColor();
         Console.WriteLine();
 
@@ -495,5 +524,18 @@ public static class MatchCommand
         }
 
         return filtered.ToList();
+    }
+
+    private static async Task<UserProfile> LoadProfileAsync()
+    {
+        var profilePath = Path.Combine(Program.DataDirectory, "my-profile.json");
+        if (!File.Exists(profilePath))
+            return new UserProfile();
+
+        var json = await File.ReadAllTextAsync(profilePath);
+        return JsonSerializer.Deserialize<UserProfile>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        }) ?? new UserProfile();
     }
 }

@@ -66,6 +66,12 @@ public sealed class JobVacancy
 
     public DateTimeOffset PostedDate { get; set; }
 
+    /// <summary>
+    /// Date when the vacancy expires or closes for applications.
+    /// Null if expiration date is not specified.
+    /// </summary>
+    public DateTimeOffset? ExpiresAt { get; set; }
+
     public DateTimeOffset ScrapedDate { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>
