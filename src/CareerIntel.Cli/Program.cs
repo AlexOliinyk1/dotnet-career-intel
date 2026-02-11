@@ -71,7 +71,8 @@ public static class Program
             CompanyScraperCommand.Create(),
             BridgeCheckCommand.Create(),
             AdaptiveLearnCommand.Create(),
-            MockInterviewCommand.Create()
+            MockInterviewCommand.Create(),
+            LinkedInCommand.Create()
         };
 
         var dataOption = new Option<string>(
