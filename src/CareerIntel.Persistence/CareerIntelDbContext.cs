@@ -67,8 +67,9 @@ public sealed class CareerIntelDbContext(DbContextOptions<CareerIntelDbContext> 
             .HasConversion(CreateStringListConverter())
             .Metadata.SetValueComparer(CreateStringListComparer());
 
-        // Ignore the navigation-like MatchScore property since it is computed, not persisted
+        // Ignore computed / non-persisted properties
         entity.Ignore(v => v.MatchScore);
+        entity.Ignore(v => v.Breakdown);
     }
 
     private static void ConfigureInterviewFeedback(ModelBuilder modelBuilder)
