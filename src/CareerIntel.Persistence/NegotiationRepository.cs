@@ -22,10 +22,11 @@ public sealed class NegotiationRepository(CareerIntelDbContext db)
     /// </summary>
     public async Task<List<NegotiationState>> GetActiveAsync(CancellationToken ct = default)
     {
-        return await db.NegotiationStates
+        // SQLite cannot ORDER BY DateTimeOffset — sort client-side
+        var active = await db.NegotiationStates
             .Where(n => n.Status == "Pending" || n.Status == "Negotiating")
-            .OrderByDescending(n => n.ReceivedDate)
             .ToListAsync(ct);
+        return active.OrderByDescending(n => n.ReceivedDate).ToList();
     }
 
     /// <summary>
@@ -54,9 +55,9 @@ public sealed class NegotiationRepository(CareerIntelDbContext db)
     /// </summary>
     public async Task<List<NegotiationState>> GetAllAsync(CancellationToken ct = default)
     {
-        return await db.NegotiationStates
-            .OrderByDescending(n => n.ReceivedDate)
-            .ToListAsync(ct);
+        // SQLite cannot ORDER BY DateTimeOffset — sort client-side
+        var results = await db.NegotiationStates.ToListAsync(ct);
+        return results.OrderByDescending(n => n.ReceivedDate).ToList();
     }
 
     /// <summary>
@@ -64,9 +65,10 @@ public sealed class NegotiationRepository(CareerIntelDbContext db)
     /// </summary>
     public async Task<List<NegotiationState>> GetByStatusAsync(string status, CancellationToken ct = default)
     {
-        return await db.NegotiationStates
+        // SQLite cannot ORDER BY DateTimeOffset — sort client-side
+        var results = await db.NegotiationStates
             .Where(n => n.Status == status)
-            .OrderByDescending(n => n.ReceivedDate)
             .ToListAsync(ct);
+        return results.OrderByDescending(n => n.ReceivedDate).ToList();
     }
 }

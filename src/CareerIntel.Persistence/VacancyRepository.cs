@@ -59,9 +59,9 @@ public sealed class VacancyRepository(CareerIntelDbContext db)
         if (since.HasValue)
             query = query.Where(v => v.ScrapedDate >= since.Value);
 
-        return await query
-            .OrderByDescending(v => v.ScrapedDate)
-            .ToListAsync(ct);
+        // SQLite cannot ORDER BY DateTimeOffset — materialize then sort client-side
+        var results = await query.ToListAsync(ct);
+        return results.OrderByDescending(v => v.ScrapedDate).ToList();
     }
 
     /// <summary>
@@ -155,10 +155,11 @@ public sealed class VacancyRepository(CareerIntelDbContext db)
     {
         var cutoff = DateTimeOffset.UtcNow.AddDays(-daysBack);
 
-        return await db.VacancyChanges
+        // SQLite cannot ORDER BY DateTimeOffset — materialize then sort client-side
+        var results = await db.VacancyChanges
             .Where(c => c.DetectedDate >= cutoff)
-            .OrderByDescending(c => c.DetectedDate)
             .ToListAsync(ct);
+        return results.OrderByDescending(c => c.DetectedDate).ToList();
     }
 
     /// <summary>
