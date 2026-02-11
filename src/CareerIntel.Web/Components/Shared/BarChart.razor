@@ -1,0 +1,25 @@
+<div class="bar-chart">
+    @if (Data.Count > 0)
+    {
+        var maxVal = Data.Values.Max();
+        @foreach (var (label, value) in Data)
+        {
+            var pct = maxVal > 0 ? (double)value / maxVal * 100 : 0;
+            <div class="bar-row">
+                <span class="bar-label">@label</span>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: @pct%"></div>
+                </div>
+                <span class="bar-value">@value</span>
+            </div>
+        }
+    }
+    else
+    {
+        <p class="text-muted">No data</p>
+    }
+</div>
+
+@code {
+    [Parameter] public Dictionary<string, int> Data { get; set; } = [];
+}

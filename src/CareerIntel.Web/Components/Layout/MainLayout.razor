@@ -1,0 +1,19 @@
+@inherits LayoutComponentBase
+
+<div class="app-layout">
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <span class="brand-icon">CI</span>
+            <span class="brand-text">CareerIntel</span>
+        </div>
+        <NavMenu />
+    </nav>
+    <main class="main-content">
+        <div class="top-bar">
+            <span class="page-context">Admin Dashboard</span>
+        </div>
+        <div class="content-area">
+            @Body
+        </div>
+    </main>
+</div>

@@ -1,0 +1,474 @@
+@page "/salary/negotiate"
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Negotiation & Offer Comparison</h1>
+    <p class="page-subtitle">Analyze salary offers, get negotiation strategies, and compare multiple opportunities</p>
+</div>
+
+<div class="card">
+    <h2 class="card-title">Add Offer</h2>
+    <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+            <label>Company</label>
+            <input type="text" @bind="_newOffer.Company" placeholder="Company name"
+                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+        </div>
+        <div class="form-group" style="flex: 1;">
+            <label>Position</label>
+            <input type="text" @bind="_newOffer.Position" placeholder="Job title"
+                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+            <label>Offered Salary</label>
+            <input type="number" @bind="_newOffer.Salary" placeholder="Annual salary"
+                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+        </div>
+        <div class="form-group" style="flex: 0.5;">
+            <label>Currency</label>
+            <select @bind="_newOffer.Currency"
+                    style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;">
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="PLN">PLN</option>
+                <option value="CHF">CHF</option>
+            </select>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+            <label>Remote Policy</label>
+            <select @bind="_newOffer.RemotePolicy"
+                    style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;">
+                <option value="FullyRemote">Fully Remote</option>
+                <option value="Hybrid">Hybrid</option>
+                <option value="OnSite">On-Site</option>
+            </select>
+        </div>
+        <div class="form-group" style="flex: 1;">
+            <label>Benefits</label>
+            <input type="text" @bind="_newOffer.Benefits" placeholder="Health, equity, PTO, etc. (comma separated)"
+                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+            <label>Growth Potential (1-10)</label>
+            <input type="number" @bind="_newOffer.GrowthPotential" min="1" max="10"
+                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+        </div>
+        <div class="form-group" style="flex: 1;">
+            <label>Tech Stack Quality (1-10)</label>
+            <input type="number" @bind="_newOffer.TechStackQuality" min="1" max="10"
+                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+        </div>
+    </div>
+    <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+        <button class="btn btn-primary" @onclick="AddOffer"
+                disabled="@(string.IsNullOrWhiteSpace(_newOffer.Company) || _newOffer.Salary <= 0)">
+            Add Offer
+        </button>
+        <button class="btn" @onclick="AnalyzeNegotiation"
+                disabled="@(string.IsNullOrWhiteSpace(_newOffer.Company) || _newOffer.Salary <= 0)">
+            Analyze Negotiation
+        </button>
+    </div>
+</div>
+
+@if (_showNegotiation)
+{
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Negotiation Strategy for @_analyzedOffer.Company</h2>
+        <div class="card-grid">
+            <StatCard Label="Offered Salary" Value="@FormatSalary(_analyzedOffer.Salary, _analyzedOffer.Currency)"
+                      Sub="@_analyzedOffer.Position" />
+            <StatCard Label="Suggested Counter" Value="@FormatSalary(GetSuggestedCounter(_analyzedOffer.Salary), _analyzedOffer.Currency)"
+                      Sub="10-20% above offer" CssClass="text-green" />
+            <StatCard Label="Walk-Away Point" Value="@FormatSalary(GetWalkAwayPoint(_analyzedOffer.Salary), _analyzedOffer.Currency)"
+                      Sub="minimum acceptable" CssClass="text-yellow" />
+        </div>
+
+        <div style="margin-top: 1.5rem;">
+            <h3 class="section-title">Negotiation Tips</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                @foreach (var tip in GetNegotiationTips(_analyzedOffer))
+                {
+                    <div class="stat-card">
+                        <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                            <StatusBadge Text="@tip.Category" Color="@tip.Color" />
+                            <div>
+                                <strong>@tip.Title</strong>
+                                <p style="margin: 0.25rem 0 0 0;">@tip.Description</p>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (_offers.Count > 0)
+{
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Offer Comparison (@_offers.Count offers)</h2>
+
+        <div class="card-grid">
+            @foreach (var offer in _offers)
+            {
+                var isBest = offer == _bestOffer;
+                <div class="card" style="@(isBest ? "border: 2px solid var(--color-green, #2ecc71);" : "")">
+                    @if (isBest)
+                    {
+                        <div style="margin-bottom: 0.5rem;">
+                            <StatusBadge Text="Best Overall" Color="green" />
+                        </div>
+                    }
+                    <h3 class="card-title">@offer.Company</h3>
+                    <p class="text-muted" style="margin: 0 0 1rem 0;">@offer.Position</p>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Salary</span>
+                            <strong>@FormatSalary(offer.Salary, offer.Currency)</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Remote</span>
+                            <StatusBadge Text="@offer.RemotePolicy"
+                                         Color="@StatusBadge.GetColorForStatus(offer.RemotePolicy)" />
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Growth</span>
+                            <span>@offer.GrowthPotential/10</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Tech Stack</span>
+                            <span>@offer.TechStackQuality/10</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(offer.Benefits))
+                        {
+                            <div style="margin-top: 0.5rem;">
+                                <span class="text-muted">Benefits:</span>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.25rem;">
+                                    @foreach (var benefit in offer.Benefits.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                                    {
+                                        <span class="badge">@benefit</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color, #444);">
+                            <span>Overall Score</span>
+                            <strong class="@GetScoreCss(offer.OverallScore)">@offer.OverallScore/100</strong>
+                        </div>
+                    </div>
+
+                    <button class="btn" style="margin-top: 1rem; width: 100%;"
+                            @onclick="() => RemoveOffer(offer)">Remove</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Side-by-Side Comparison</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Criterion</th>
+                    @foreach (var offer in _offers)
+                    {
+                        <th>@offer.Company</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Salary</strong></td>
+                    @foreach (var offer in _offers)
+                    {
+                        var isBestSalary = offer.Salary == _offers.Max(o => o.Salary);
+                        <td class="@(isBestSalary ? "text-green" : "")">
+                            <strong>@FormatSalary(offer.Salary, offer.Currency)</strong>
+                        </td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Remote Policy</strong></td>
+                    @foreach (var offer in _offers)
+                    {
+                        <td>
+                            <StatusBadge Text="@offer.RemotePolicy"
+                                         Color="@StatusBadge.GetColorForStatus(offer.RemotePolicy)" />
+                        </td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Benefits</strong></td>
+                    @foreach (var offer in _offers)
+                    {
+                        <td>@(string.IsNullOrWhiteSpace(offer.Benefits) ? "None listed" : offer.Benefits)</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Growth Potential</strong></td>
+                    @foreach (var offer in _offers)
+                    {
+                        var isBestGrowth = offer.GrowthPotential == _offers.Max(o => o.GrowthPotential);
+                        <td class="@(isBestGrowth ? "text-green" : "")">@offer.GrowthPotential/10</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Tech Stack</strong></td>
+                    @foreach (var offer in _offers)
+                    {
+                        var isBestTech = offer.TechStackQuality == _offers.Max(o => o.TechStackQuality);
+                        <td class="@(isBestTech ? "text-green" : "")">@offer.TechStackQuality/10</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Overall Score</strong></td>
+                    @foreach (var offer in _offers)
+                    {
+                        var isBest = offer == _bestOffer;
+                        <td>
+                            <strong class="@(isBest ? "text-green" : "")">@offer.OverallScore/100</strong>
+                        </td>
+                    }
+                </tr>
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_offers.Count == 0 && !_showNegotiation)
+{
+    <div class="card" style="margin-top: 1.5rem;">
+        <h3 class="card-title">How to Use</h3>
+        <div class="card-grid">
+            <div class="stat-card">
+                <h4 class="section-title">1. Add Offers</h4>
+                <p>Enter each job offer's details including salary, benefits, and growth potential.</p>
+            </div>
+            <div class="stat-card">
+                <h4 class="section-title">2. Analyze</h4>
+                <p>Click "Analyze Negotiation" to get counter-offer strategies and talking points.</p>
+            </div>
+            <div class="stat-card">
+                <h4 class="section-title">3. Compare</h4>
+                <p>Add multiple offers to see a side-by-side comparison across all dimensions.</p>
+            </div>
+        </div>
+    </div>
+}
+
+<div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+    <a href="/salary" class="btn btn-primary">Salary Intelligence</a>
+    <a href="/jobs" class="btn">Browse Jobs</a>
+</div>
+
+@code {
+    private OfferInput _newOffer = new();
+    private List<OfferEntry> _offers = [];
+    private OfferEntry? _bestOffer;
+    private bool _showNegotiation;
+    private OfferInput _analyzedOffer = new();
+
+    private void AddOffer()
+    {
+        if (string.IsNullOrWhiteSpace(_newOffer.Company) || _newOffer.Salary <= 0)
+            return;
+
+        var entry = new OfferEntry
+        {
+            Company = _newOffer.Company,
+            Position = _newOffer.Position,
+            Salary = _newOffer.Salary,
+            Currency = _newOffer.Currency,
+            RemotePolicy = _newOffer.RemotePolicy,
+            Benefits = _newOffer.Benefits,
+            GrowthPotential = _newOffer.GrowthPotential,
+            TechStackQuality = _newOffer.TechStackQuality,
+            OverallScore = CalculateOverallScore(_newOffer)
+        };
+
+        _offers.Add(entry);
+        _bestOffer = _offers.OrderByDescending(o => o.OverallScore).First();
+
+        // Reset form
+        _newOffer = new OfferInput();
+    }
+
+    private void AnalyzeNegotiation()
+    {
+        if (string.IsNullOrWhiteSpace(_newOffer.Company) || _newOffer.Salary <= 0)
+            return;
+
+        _analyzedOffer = new OfferInput
+        {
+            Company = _newOffer.Company,
+            Position = _newOffer.Position,
+            Salary = _newOffer.Salary,
+            Currency = _newOffer.Currency,
+            RemotePolicy = _newOffer.RemotePolicy,
+            Benefits = _newOffer.Benefits,
+            GrowthPotential = _newOffer.GrowthPotential,
+            TechStackQuality = _newOffer.TechStackQuality
+        };
+
+        _showNegotiation = true;
+    }
+
+    private void RemoveOffer(OfferEntry offer)
+    {
+        _offers.Remove(offer);
+        _bestOffer = _offers.Count > 0
+            ? _offers.OrderByDescending(o => o.OverallScore).First()
+            : null;
+    }
+
+    private static int CalculateOverallScore(OfferInput offer)
+    {
+        // Salary score (0-40 points) - normalized around 100K USD baseline
+        var salaryScore = Math.Min((int)(offer.Salary / 2500m), 40);
+
+        // Remote score (0-15 points)
+        var remoteScore = offer.RemotePolicy switch
+        {
+            "FullyRemote" => 15,
+            "Hybrid" => 10,
+            "OnSite" => 5,
+            _ => 5
+        };
+
+        // Growth (0-20 points)
+        var growthScore = offer.GrowthPotential * 2;
+
+        // Tech stack (0-15 points)
+        var techScore = (int)(offer.TechStackQuality * 1.5);
+
+        // Benefits (0-10 points)
+        var benefitCount = string.IsNullOrWhiteSpace(offer.Benefits)
+            ? 0
+            : offer.Benefits.Split(',', StringSplitOptions.RemoveEmptyEntries).Length;
+        var benefitScore = Math.Min(benefitCount * 2, 10);
+
+        return Math.Min(salaryScore + remoteScore + growthScore + techScore + benefitScore, 100);
+    }
+
+    private static decimal GetSuggestedCounter(decimal salary) =>
+        Math.Round(salary * 1.15m, -2); // 15% above
+
+    private static decimal GetWalkAwayPoint(decimal salary) =>
+        Math.Round(salary * 0.95m, -2); // 5% below
+
+    private static string FormatSalary(decimal salary, string currency) =>
+        currency switch
+        {
+            "EUR" => $"\u20ac{salary:N0}",
+            "GBP" => $"\u00a3{salary:N0}",
+            "PLN" => $"{salary:N0} PLN",
+            "CHF" => $"CHF {salary:N0}",
+            _ => $"${salary:N0}"
+        };
+
+    private static List<NegotiationTip> GetNegotiationTips(OfferInput offer)
+    {
+        var tips = new List<NegotiationTip>
+        {
+            new()
+            {
+                Category = "Timing",
+                Color = "cyan",
+                Title = "Do not accept immediately",
+                Description = "Express enthusiasm but request 3-5 business days to review the full compensation package. This is standard and expected."
+            },
+            new()
+            {
+                Category = "Research",
+                Color = "blue",
+                Title = "Know your market value",
+                Description = $"Research salary ranges for similar roles at {offer.Company} and competitors. Use Glassdoor, Levels.fyi, and Blind for data."
+            },
+            new()
+            {
+                Category = "Strategy",
+                Color = "green",
+                Title = "Lead with value, not demands",
+                Description = "Frame your counter as: 'Based on my experience in [specific skills] and the market rate for this role, I was expecting something closer to [counter amount].'"
+            },
+            new()
+            {
+                Category = "Benefits",
+                Color = "yellow",
+                Title = "Negotiate beyond base salary",
+                Description = "If base salary is firm, negotiate signing bonus, equity/RSU, remote work days, PTO, professional development budget, or review timeline."
+            }
+        };
+
+        if (offer.RemotePolicy == "OnSite")
+        {
+            tips.Add(new NegotiationTip
+            {
+                Category = "Remote",
+                Color = "orange",
+                Title = "Negotiate remote flexibility",
+                Description = "If the role is on-site, negotiate 1-2 remote days per week. Frame it as: 'I do my best deep work from home and collaboration in the office.'"
+            });
+        }
+
+        tips.Add(new NegotiationTip
+        {
+            Category = "Close",
+            Color = "green",
+            Title = "Get everything in writing",
+            Description = "Once terms are agreed, request an updated offer letter with all negotiated items before formally accepting."
+        });
+
+        return tips;
+    }
+
+    private static string GetScoreCss(int score) => score switch
+    {
+        >= 70 => "text-green",
+        >= 50 => "text-cyan",
+        >= 30 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private sealed class OfferInput
+    {
+        public string Company { get; set; } = string.Empty;
+        public string Position { get; set; } = string.Empty;
+        public decimal Salary { get; set; }
+        public string Currency { get; set; } = "USD";
+        public string RemotePolicy { get; set; } = "FullyRemote";
+        public string Benefits { get; set; } = string.Empty;
+        public int GrowthPotential { get; set; } = 5;
+        public int TechStackQuality { get; set; } = 5;
+    }
+
+    private sealed class OfferEntry
+    {
+        public string Company { get; set; } = string.Empty;
+        public string Position { get; set; } = string.Empty;
+        public decimal Salary { get; set; }
+        public string Currency { get; set; } = "USD";
+        public string RemotePolicy { get; set; } = string.Empty;
+        public string Benefits { get; set; } = string.Empty;
+        public int GrowthPotential { get; set; }
+        public int TechStackQuality { get; set; }
+        public int OverallScore { get; set; }
+    }
+
+    private sealed class NegotiationTip
+    {
+        public string Category { get; set; } = string.Empty;
+        public string Color { get; set; } = "gray";
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+    }
+}

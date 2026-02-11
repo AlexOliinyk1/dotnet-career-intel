@@ -1,0 +1,197 @@
+@page "/applications"
+@inject DataDirectoryConfig DataDir
+@rendermode InteractiveServer
+
+<div class="page-header">
+    <h1 class="page-title">Application Pipeline</h1>
+    <p>Track applications through every stage</p>
+</div>
+
+<LoadingSpinner Loading="_loading" Message="Loading applications..." />
+
+@if (!_loading)
+{
+    @if (_applications.Count == 0)
+    {
+        <div class="card">
+            <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                No applications tracked yet. Use the <a href="/applications/decisions">Decisions</a> page
+                to evaluate vacancies, or add applications via the CLI.
+            </p>
+        </div>
+    }
+    else
+    {
+        @* Summary Stats *@
+        <div class="card-grid" style="margin-bottom: 1.5rem;">
+            <StatCard Label="Total" Value="@_applications.Count.ToString()" />
+            <StatCard Label="Active" Value="@ActiveCount.ToString()" CssClass="highlight-blue" />
+            <StatCard Label="Interviews" Value="@StageCount(ApplicationStatus.Interview).ToString()" CssClass="highlight-cyan" />
+            <StatCard Label="Offers" Value="@StageCount(ApplicationStatus.Offer).ToString()" CssClass="highlight-green" />
+        </div>
+
+        @* Kanban Board *@
+        <div style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem;">
+            @foreach (var stage in _stages)
+            {
+                var stageApps = GetStageApplications(stage.Statuses);
+                <div style="min-width: 260px; flex: 1;">
+                    <div class="card" style="height: 100%;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 class="section-title" style="margin: 0;">@stage.Name</h3>
+                            <span class="badge badge-@stage.Color">@stageApps.Count</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            @foreach (var app in stageApps)
+                            {
+                                <div class="card" style="padding: 0.75rem; border-left: 3px solid var(--color-@stage.Color, var(--border));">
+                                    <div style="font-weight: 600; margin-bottom: 0.25rem;" class="truncate">@app.Company</div>
+                                    <div style="font-size: 0.85rem; color: var(--text-muted);" class="truncate">@app.VacancyTitle</div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                                        @if (app.MatchScore > 0)
+                                        {
+                                            <span class="badge badge-@GetScoreColor(app.MatchScore)">@($"{app.MatchScore:F0}%")</span>
+                                        }
+                                        else
+                                        {
+                                            <span></span>
+                                        }
+                                        <span style="font-size: 0.75rem; color: var(--text-muted);">
+                                            @FormatDate(app)
+                                        </span>
+                                    </div>
+                                    <div style="margin-top: 0.5rem;">
+                                        <StatusBadge Text="@app.Status.ToString()"
+                                                     Color="@StatusBadge.GetColorForStatus(app.Status.ToString())" />
+                                    </div>
+                                </div>
+                            }
+                            @if (stageApps.Count == 0)
+                            {
+                                <p style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0;">
+                                    No applications
+                                </p>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* Full Table *@
+        <div class="card" style="margin-top: 1.5rem;">
+            <h3 class="card-title">All Applications</h3>
+            <div class="data-table" style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Company</th>
+                            <th>Position</th>
+                            <th>Match</th>
+                            <th>Method</th>
+                            <th>Created</th>
+                            <th>Applied</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var app in _applications.OrderByDescending(a => a.CreatedDate))
+                        {
+                            <tr>
+                                <td>@app.Id</td>
+                                <td class="truncate" style="max-width: 160px;">@app.Company</td>
+                                <td class="truncate" style="max-width: 200px;">@app.VacancyTitle</td>
+                                <td>
+                                    @if (app.MatchScore > 0)
+                                    {
+                                        <span class="@GetScoreTextClass(app.MatchScore)">@($"{app.MatchScore:F0}%")</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--text-muted);">-</span>
+                                    }
+                                </td>
+                                <td>@app.ApplyMethod</td>
+                                <td>@app.CreatedDate.ToString("yyyy-MM-dd")</td>
+                                <td>@(app.AppliedDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                <td>
+                                    <StatusBadge Text="@app.Status.ToString()"
+                                                 Color="@StatusBadge.GetColorForStatus(app.Status.ToString())" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<JobApplication> _applications = [];
+    private bool _loading = true;
+
+    private record PipelineStage(string Name, string Color, ApplicationStatus[] Statuses);
+
+    private readonly PipelineStage[] _stages =
+    [
+        new("Pending", "gray", [ApplicationStatus.Pending, ApplicationStatus.ResumeReady]),
+        new("Applied", "blue", [ApplicationStatus.Applied, ApplicationStatus.Viewed]),
+        new("Screening", "cyan", [ApplicationStatus.Screening]),
+        new("Interview", "cyan", [ApplicationStatus.Interview]),
+        new("Offer", "green", [ApplicationStatus.Offer]),
+        new("Rejected / Closed", "red",
+            [ApplicationStatus.Rejected, ApplicationStatus.Withdrawn, ApplicationStatus.Ghosted, ApplicationStatus.Expired])
+    ];
+
+    private int ActiveCount => _applications.Count(a =>
+        a.Status != ApplicationStatus.Rejected &&
+        a.Status != ApplicationStatus.Withdrawn &&
+        a.Status != ApplicationStatus.Ghosted &&
+        a.Status != ApplicationStatus.Expired);
+
+    private int StageCount(ApplicationStatus status) =>
+        _applications.Count(a => a.Status == status);
+
+    private List<JobApplication> GetStageApplications(ApplicationStatus[] statuses) =>
+        _applications
+            .Where(a => statuses.Contains(a.Status))
+            .OrderByDescending(a => a.CreatedDate)
+            .ToList();
+
+    private static string GetScoreColor(double score) => score switch
+    {
+        >= 80 => "green",
+        >= 60 => "yellow",
+        _ => "red"
+    };
+
+    private static string GetScoreTextClass(double score) => score switch
+    {
+        >= 80 => "text-green",
+        >= 60 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string FormatDate(JobApplication app)
+    {
+        if (app.AppliedDate.HasValue)
+            return app.AppliedDate.Value.ToString("MMM dd");
+        return app.CreatedDate.ToString("MMM dd");
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var filePath = Path.Combine(DataDir.Path, "applications.json");
+
+        if (File.Exists(filePath))
+        {
+            var json = await File.ReadAllTextAsync(filePath);
+            _applications = JsonSerializer.Deserialize<List<JobApplication>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        }
+
+        _loading = false;
+    }
+}

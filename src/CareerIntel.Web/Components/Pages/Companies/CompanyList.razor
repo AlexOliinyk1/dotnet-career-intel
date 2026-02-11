@@ -1,0 +1,221 @@
+@page "/companies"
+@inject VacancyRepository VacancyRepo
+
+<div class="page-header">
+    <h1 class="page-title">Company Discovery</h1>
+    <p class="page-subtitle">Browse companies from scraped vacancies grouped by hiring volume</p>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+    <div class="form-row">
+        <div class="form-group">
+            <label>Search Company</label>
+            <input type="text" @bind="_searchText" @bind:event="oninput"
+                   placeholder="Filter by company name..." />
+        </div>
+    </div>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading companies..." />
+
+@if (!_loading)
+{
+    <div class="card-grid" style="margin-bottom: 1rem;">
+        <StatCard Label="Total Companies" Value="@_companyRows.Count.ToString()" />
+        <StatCard Label="Total Jobs" Value="@_allVacancies.Count.ToString()" />
+        <StatCard Label="Avg Remote %" Value="@($"{OverallRemotePercent:F0}%")" />
+        <StatCard Label="With Salary Data" Value="@_companyRows.Count(r => r.AvgSalary > 0).ToString()" />
+    </div>
+
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <span class="text-muted">
+                Showing @FilteredCompanies.Count of @_companyRows.Count companies
+            </span>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="cursor: pointer;" @onclick="() => SortBy(nameof(CompanyRow.CompanyName))">
+                        Company Name @SortIndicator(nameof(CompanyRow.CompanyName))
+                    </th>
+                    <th style="cursor: pointer;" @onclick="() => SortBy(nameof(CompanyRow.JobCount))">
+                        Job Count @SortIndicator(nameof(CompanyRow.JobCount))
+                    </th>
+                    <th style="cursor: pointer;" @onclick="() => SortBy(nameof(CompanyRow.RemotePercent))">
+                        Remote % @SortIndicator(nameof(CompanyRow.RemotePercent))
+                    </th>
+                    <th style="cursor: pointer;" @onclick="() => SortBy(nameof(CompanyRow.AvgSalary))">
+                        Avg Salary @SortIndicator(nameof(CompanyRow.AvgSalary))
+                    </th>
+                    <th>Platforms</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in PagedCompanies)
+                {
+                    <tr @onclick="() => NavigateToJobs(row.CompanyName)" style="cursor: pointer;">
+                        <td><strong>@row.CompanyName</strong></td>
+                        <td class="text-cyan">@row.JobCount</td>
+                        <td>
+                            <StatusBadge Text="@($"{row.RemotePercent:F0}%")"
+                                         Color="@(row.RemotePercent >= 80 ? "green" : row.RemotePercent >= 40 ? "yellow" : "gray")" />
+                        </td>
+                        <td class="text-cyan">
+                            @(row.AvgSalary > 0 ? $"${row.AvgSalary:N0}" : "-")
+                        </td>
+                        <td>
+                            @foreach (var platform in row.Platforms)
+                            {
+                                <span class="badge" style="margin-right: 0.25rem;">@platform</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (TotalPages > 1)
+        {
+            <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+                <button class="btn" disabled="@(_currentPage == 0)" @onclick="PreviousPage">Previous</button>
+                @for (var i = PaginationStart; i <= PaginationEnd; i++)
+                {
+                    var pageIndex = i;
+                    <button class="btn @(pageIndex == _currentPage ? "btn-primary" : "")"
+                            @onclick="() => GoToPage(pageIndex)">
+                        @(pageIndex + 1)
+                    </button>
+                }
+                <button class="btn" disabled="@(_currentPage >= TotalPages - 1)" @onclick="NextPage">Next</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    private const int PageSize = 25;
+
+    private bool _loading = true;
+    private List<JobVacancy> _allVacancies = [];
+    private List<CompanyRow> _companyRows = [];
+    private int _currentPage;
+    private string _searchText = "";
+    private string _sortColumn = nameof(CompanyRow.JobCount);
+    private bool _sortDescending = true;
+
+    private double OverallRemotePercent => _allVacancies.Count > 0
+        ? _allVacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote) * 100.0 / _allVacancies.Count
+        : 0;
+
+    private List<CompanyRow> FilteredCompanies
+    {
+        get
+        {
+            var query = _companyRows.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                var search = _searchText.Trim();
+                query = query.Where(r => r.CompanyName.Contains(search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            query = _sortColumn switch
+            {
+                nameof(CompanyRow.CompanyName) => _sortDescending
+                    ? query.OrderByDescending(r => r.CompanyName)
+                    : query.OrderBy(r => r.CompanyName),
+                nameof(CompanyRow.RemotePercent) => _sortDescending
+                    ? query.OrderByDescending(r => r.RemotePercent)
+                    : query.OrderBy(r => r.RemotePercent),
+                nameof(CompanyRow.AvgSalary) => _sortDescending
+                    ? query.OrderByDescending(r => r.AvgSalary)
+                    : query.OrderBy(r => r.AvgSalary),
+                _ => _sortDescending
+                    ? query.OrderByDescending(r => r.JobCount)
+                    : query.OrderBy(r => r.JobCount),
+            };
+
+            return query.ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredCompanies.Count / PageSize));
+    private int PaginationStart => Math.Max(0, _currentPage - 3);
+    private int PaginationEnd => Math.Min(TotalPages - 1, _currentPage + 3);
+
+    private List<CompanyRow> PagedCompanies => FilteredCompanies
+        .Skip(_currentPage * PageSize)
+        .Take(PageSize)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allVacancies = await VacancyRepo.GetVacanciesAsync();
+
+        _companyRows = _allVacancies
+            .GroupBy(v => v.Company, StringComparer.OrdinalIgnoreCase)
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+            .Select(g =>
+            {
+                var vacancies = g.ToList();
+                var withSalary = vacancies.Where(v => v.SalaryMin.HasValue).ToList();
+                var avgSalary = withSalary.Count > 0
+                    ? withSalary.Average(v => v.SalaryMax.HasValue
+                        ? (double)(v.SalaryMin!.Value + v.SalaryMax.Value) / 2
+                        : (double)v.SalaryMin!.Value)
+                    : 0;
+
+                return new CompanyRow
+                {
+                    CompanyName = g.Key,
+                    JobCount = vacancies.Count,
+                    RemotePercent = vacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote) * 100.0 / vacancies.Count,
+                    AvgSalary = avgSalary,
+                    Platforms = vacancies.Select(v => v.SourcePlatform).Distinct().OrderBy(p => p).ToList()
+                };
+            })
+            .ToList();
+
+        _loading = false;
+    }
+
+    private void SortBy(string column)
+    {
+        if (_sortColumn == column)
+            _sortDescending = !_sortDescending;
+        else
+        {
+            _sortColumn = column;
+            _sortDescending = true;
+        }
+        _currentPage = 0;
+    }
+
+    private string SortIndicator(string column)
+    {
+        if (_sortColumn != column) return "";
+        return _sortDescending ? " v" : " ^";
+    }
+
+    private void NavigateToJobs(string companyName)
+    {
+        Navigation.NavigateTo($"/jobs?search={Uri.EscapeDataString(companyName)}");
+    }
+
+    private void GoToPage(int page) => _currentPage = page;
+    private void PreviousPage() { if (_currentPage > 0) _currentPage--; }
+    private void NextPage() { if (_currentPage < TotalPages - 1) _currentPage++; }
+
+    private sealed class CompanyRow
+    {
+        public string CompanyName { get; set; } = string.Empty;
+        public int JobCount { get; set; }
+        public double RemotePercent { get; set; }
+        public double AvgSalary { get; set; }
+        public List<string> Platforms { get; set; } = [];
+    }
+}

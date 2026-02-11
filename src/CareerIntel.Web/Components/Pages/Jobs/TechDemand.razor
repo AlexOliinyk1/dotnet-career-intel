@@ -1,0 +1,127 @@
+@page "/jobs/tech-demand"
+@inject VacancyRepository VacancyRepo
+
+<div class="page-header">
+    <h1 class="page-title">Tech Demand Analysis</h1>
+    <p class="page-subtitle">Technology frequency and demand across all scraped vacancies</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing technology demand..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Technologies Found"
+                  Value="@_report.Items.Count.ToString()"
+                  Sub="@($"across {_report.ByCategory.Count} categories")" />
+        <StatCard Label="Top Technology"
+                  Value="@(_report.Items.Count > 0 ? _report.Items[0].Technology : "N/A")"
+                  Sub="@(_report.Items.Count > 0 ? $"{_report.Items[0].Percentage}% of vacancies" : "")"
+                  CssClass="text-cyan" />
+        <StatCard Label="Vacancies Analyzed"
+                  Value="@_report.TotalVacancies.ToString("N0")"
+                  Sub="@($"as of {_report.AnalyzedAt:MMM dd, yyyy}")" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Top Technologies</h2>
+        <BarChart Data="@_topTechChart" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">All Technologies by Demand</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Technology</th>
+                    <th>Category</th>
+                    <th>Vacancies</th>
+                    <th>Demand %</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ var rank = 1; }
+                @foreach (var item in _report.Items)
+                {
+                    <tr>
+                        <td class="text-muted">@rank</td>
+                        <td><strong>@item.Technology</strong></td>
+                        <td><span class="badge">@item.Category</span></td>
+                        <td>@item.Count</td>
+                        <td>
+                            <span class="@GetPercentageColor(item.Percentage)">
+                                @item.Percentage%
+                            </span>
+                        </td>
+                    </tr>
+                    rank++;
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="section-title" style="margin-top: 2rem;">Category Breakdown</h2>
+
+    <div class="card-grid">
+        @foreach (var category in _report.ByCategory)
+        {
+            <div class="card">
+                <h3 class="card-title">@category.Category</h3>
+                <div style="margin-bottom: 0.5rem;">
+                    <span class="text-muted">@category.TechCount technologies</span>
+                    <span>&mdash;</span>
+                    <span class="text-cyan">@category.TotalMentions total mentions</span>
+                </div>
+                <p>
+                    Top: <strong>@category.TopTech</strong>
+                </p>
+                @if (_categoryCharts.TryGetValue(category.Category, out var chartData))
+                {
+                    <BarChart Data="@chartData" />
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private TechDemandReport _report = new();
+    private Dictionary<string, int> _topTechChart = [];
+    private Dictionary<string, Dictionary<string, int>> _categoryCharts = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var vacancies = await VacancyRepo.GetVacanciesAsync();
+        _report = TechDemandAnalyzer.Analyze(vacancies);
+
+        // Top 20 technologies for the main bar chart
+        _topTechChart = _report.Items
+            .Take(20)
+            .ToDictionary(i => i.Technology, i => i.Count);
+
+        // Per-category charts
+        _categoryCharts = [];
+        foreach (var category in _report.ByCategory)
+        {
+            var categoryItems = _report.Items
+                .Where(i => i.Category == category.Category)
+                .OrderByDescending(i => i.Count)
+                .Take(10)
+                .ToDictionary(i => i.Technology, i => i.Count);
+
+            _categoryCharts[category.Category] = categoryItems;
+        }
+
+        _loading = false;
+    }
+
+    private static string GetPercentageColor(double pct) => pct switch
+    {
+        >= 50 => "text-green",
+        >= 25 => "text-cyan",
+        >= 10 => "text-yellow",
+        _ => "text-muted"
+    };
+}

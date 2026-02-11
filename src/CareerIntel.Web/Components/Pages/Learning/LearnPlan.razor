@@ -1,0 +1,266 @@
+@page "/learning"
+@inject VacancyRepository VacancyRepo
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Learning Plan</h1>
+    <p class="page-subtitle">Skills gap analysis based on current market demand</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing skill demand across vacancies..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Total Vacancies Analyzed" Value="@_vacancies.Count.ToString("N0")"
+                  Sub="across all platforms" />
+        <StatCard Label="Unique Skills in Demand" Value="@_skillDemand.Count.ToString("N0")"
+                  Sub="extracted from job listings" CssClass="text-cyan" />
+        <StatCard Label="Top Skill" Value="@(_skillDemand.Count > 0 ? _skillDemand.First().Key : "N/A")"
+                  Sub="@(_skillDemand.Count > 0 ? $"{_skillDemand.First().Value} mentions" : "")" CssClass="text-green" />
+        <StatCard Label="Avg Skills per Job" Value="@_avgSkillsPerJob.ToString("F1")"
+                  Sub="required skills only" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Skill Demand Chart</h2>
+        @if (_topSkillsChart.Count > 0)
+        {
+            <BarChart Data="@_topSkillsChart" />
+        }
+        else
+        {
+            <p class="text-muted">No skill data available yet. Run a scan to populate vacancy data.</p>
+        }
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Skills Gap Analysis</h2>
+        @if (_skillDemand.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Demand Count</th>
+                        <th>Your Level</th>
+                        <th>Gap</th>
+                        <th>Priority</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (skill, count) in _skillDemand.Take(25))
+                    {
+                        var yourLevel = GetYourLevel(skill);
+                        var gap = GetGapAssessment(count, yourLevel);
+                        <tr>
+                            <td><strong>@skill</strong></td>
+                            <td>@count</td>
+                            <td>
+                                <StatusBadge Text="@yourLevel"
+                                             Color="@GetLevelColor(yourLevel)" />
+                            </td>
+                            <td>@gap</td>
+                            <td>
+                                <StatusBadge Text="@GetPriority(count, yourLevel)"
+                                             Color="@StatusBadge.GetColorForStatus(GetPriority(count, yourLevel))" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No vacancy data available for analysis.</p>
+        }
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Priority Learning Recommendations</h2>
+        @if (_recommendations.Count > 0)
+        {
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                @foreach (var rec in _recommendations)
+                {
+                    <div class="stat-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>@rec.Skill</strong>
+                                <span class="text-muted" style="margin-left: 0.5rem;">@rec.DemandCount mentions in job listings</span>
+                            </div>
+                            <StatusBadge Text="@rec.Priority"
+                                         Color="@StatusBadge.GetColorForStatus(rec.Priority)" />
+                        </div>
+                        <p style="margin: 0.5rem 0 0 0;">@rec.Reason</p>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="text-muted">No recommendations available yet.</p>
+        }
+    </div>
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+        <a href="/learning/adaptive" class="btn btn-primary">Adaptive Learning Plan</a>
+        <a href="/learning/resources" class="btn">Browse Resources</a>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<JobVacancy> _vacancies = [];
+    private List<KeyValuePair<string, int>> _skillDemand = [];
+    private Dictionary<string, int> _topSkillsChart = [];
+    private double _avgSkillsPerJob;
+    private List<LearningRecommendation> _recommendations = [];
+
+    // Placeholder skill levels - in production, would come from user profile
+    private static readonly Dictionary<string, string> _yourSkills = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["C#"] = "Advanced",
+        [".NET"] = "Advanced",
+        ["ASP.NET"] = "Advanced",
+        ["Entity Framework"] = "Intermediate",
+        ["SQL"] = "Intermediate",
+        ["Azure"] = "Beginner",
+        ["Docker"] = "Beginner",
+        ["Kubernetes"] = "None",
+        ["React"] = "Beginner",
+        ["TypeScript"] = "Intermediate",
+        ["Git"] = "Advanced",
+        ["REST"] = "Advanced",
+        ["Microservices"] = "Intermediate",
+        ["RabbitMQ"] = "Beginner",
+        ["Redis"] = "Beginner",
+        ["CI/CD"] = "Intermediate",
+        ["gRPC"] = "None",
+        ["GraphQL"] = "None",
+        ["Blazor"] = "Intermediate",
+        ["Unit Testing"] = "Intermediate",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _vacancies = await VacancyRepo.GetVacanciesAsync();
+
+        // Aggregate skills demand
+        var allSkills = _vacancies
+            .SelectMany(v => v.RequiredSkills)
+            .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new KeyValuePair<string, int>(g.Key, g.Count()))
+            .OrderByDescending(kv => kv.Value)
+            .ToList();
+
+        _skillDemand = allSkills;
+
+        _topSkillsChart = allSkills
+            .Take(15)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        _avgSkillsPerJob = _vacancies.Count > 0
+            ? _vacancies.Average(v => v.RequiredSkills.Count)
+            : 0;
+
+        // Generate priority recommendations
+        _recommendations = GenerateRecommendations(allSkills);
+
+        _loading = false;
+    }
+
+    private static string GetYourLevel(string skill)
+    {
+        return _yourSkills.TryGetValue(skill, out var level) ? level : "Unknown";
+    }
+
+    private static string GetGapAssessment(int demandCount, string yourLevel)
+    {
+        var levelScore = yourLevel switch
+        {
+            "Advanced" => 3,
+            "Intermediate" => 2,
+            "Beginner" => 1,
+            "None" => 0,
+            _ => -1
+        };
+
+        if (levelScore == -1)
+            return "Assess your level";
+
+        if (demandCount > 20 && levelScore < 2)
+            return "Large gap - high demand, low skill";
+        if (demandCount > 10 && levelScore < 2)
+            return "Medium gap - moderate demand";
+        if (levelScore >= 3)
+            return "No gap - strong match";
+        if (levelScore >= 2)
+            return "Small gap - minor improvement needed";
+
+        return "Gap identified";
+    }
+
+    private static string GetPriority(int demandCount, string yourLevel)
+    {
+        var levelScore = yourLevel switch
+        {
+            "Advanced" => 3,
+            "Intermediate" => 2,
+            "Beginner" => 1,
+            "None" => 0,
+            _ => 0
+        };
+
+        if (demandCount > 20 && levelScore < 2)
+            return "Critical";
+        if (demandCount > 10 && levelScore < 2)
+            return "High";
+        if (demandCount > 5 && levelScore < 3)
+            return "Medium";
+
+        return "Low";
+    }
+
+    private static string GetLevelColor(string level) => level switch
+    {
+        "Advanced" => "green",
+        "Intermediate" => "cyan",
+        "Beginner" => "yellow",
+        "None" => "red",
+        _ => "gray"
+    };
+
+    private static List<LearningRecommendation> GenerateRecommendations(List<KeyValuePair<string, int>> skillDemand)
+    {
+        var recs = new List<LearningRecommendation>();
+
+        foreach (var (skill, count) in skillDemand.Take(30))
+        {
+            var yourLevel = GetYourLevel(skill);
+            var priority = GetPriority(count, yourLevel);
+
+            if (priority is "Critical" or "High")
+            {
+                recs.Add(new LearningRecommendation
+                {
+                    Skill = skill,
+                    DemandCount = count,
+                    Priority = priority,
+                    Reason = $"{skill} appears in {count} job listings and your current level is \"{yourLevel}\". " +
+                             $"Investing time here will significantly improve your match rate."
+                });
+            }
+        }
+
+        return recs.OrderBy(r => r.Priority == "Critical" ? 0 : 1).Take(10).ToList();
+    }
+
+    private sealed class LearningRecommendation
+    {
+        public string Skill { get; set; } = string.Empty;
+        public int DemandCount { get; set; }
+        public string Priority { get; set; } = string.Empty;
+        public string Reason { get; set; } = string.Empty;
+    }
+}

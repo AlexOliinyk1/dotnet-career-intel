@@ -1,0 +1,203 @@
+@page "/learning/adaptive"
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Adaptive Learning Plan</h1>
+    <p class="page-subtitle">AI-driven study priorities based on interview performance and confidence gaps</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Generating adaptive learning plan..." />
+
+@if (!_loading && _error is not null)
+{
+    <div class="card" style="border-left: 4px solid var(--color-red, #e74c3c);">
+        <h3 class="card-title">Error Loading Data</h3>
+        <p>@_error</p>
+        <p class="text-muted">Make sure <code>interview-feedback.json</code> and <code>question-confidence.json</code> exist in your data directory.</p>
+    </div>
+}
+
+@if (!_loading && _error is null)
+{
+    <div class="card-grid">
+        <StatCard Label="Overall Readiness" Value="@($"{_plan.OverallReadiness}%")"
+                  Sub="@GetReadinessLabel(_plan.OverallReadiness)"
+                  CssClass="@GetReadinessCss(_plan.OverallReadiness)" />
+        <StatCard Label="Weakest Area" Value="@_plan.WeakestArea"
+                  Sub="Focus your study here" CssClass="text-red" />
+        <StatCard Label="Strongest Area" Value="@_plan.StrongestArea"
+                  Sub="Maintain current level" CssClass="text-green" />
+        <StatCard Label="Study Sessions" Value="@_plan.Sessions.Count.ToString()"
+                  Sub="@($"{_plan.Sessions.Sum(s => s.EstimatedMinutes)} min total")" CssClass="text-cyan" />
+    </div>
+
+    @if (_plan.OverlearningWarnings.Count > 0)
+    {
+        <div class="card" style="margin-top: 1.5rem; border-left: 4px solid var(--color-yellow, #f1c40f);">
+            <h3 class="card-title">Overlearning Warnings</h3>
+            @foreach (var warning in _plan.OverlearningWarnings)
+            {
+                <div style="padding: 0.5rem 0; display: flex; align-items: flex-start; gap: 0.5rem;">
+                    <StatusBadge Text="Warning" Color="yellow" />
+                    <span>@warning</span>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Learning Sessions</h2>
+        @if (_plan.Sessions.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Topic</th>
+                        <th>Priority</th>
+                        <th>Est. Minutes</th>
+                        <th>Reason</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var session in _plan.Sessions)
+                    {
+                        <tr>
+                            <td><strong>@session.Topic</strong></td>
+                            <td>
+                                <StatusBadge Text="@session.Priority"
+                                             Color="@GetPriorityColor(session.Priority)" />
+                            </td>
+                            <td>@session.EstimatedMinutes min</td>
+                            <td>@session.Reason</td>
+                            <td>
+                                <span class="@GetConfidenceCss(session.Confidence)">
+                                    @($"{session.Confidence:F0}%")
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No learning sessions generated. Add interview feedback or question confidence data to get started.</p>
+        }
+    </div>
+
+    @if (_plan.Sessions.Any(s => s.SuggestedActions.Count > 0))
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Suggested Actions</h2>
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                @foreach (var session in _plan.Sessions.Where(s => s.SuggestedActions.Count > 0))
+                {
+                    <div class="stat-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <strong>@session.Topic</strong>
+                            <StatusBadge Text="@session.Priority"
+                                         Color="@GetPriorityColor(session.Priority)" />
+                        </div>
+                        <ul style="margin: 0; padding-left: 1.5rem;">
+                            @foreach (var action in session.SuggestedActions)
+                            {
+                                <li style="padding: 0.2rem 0;">@action</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h3 class="card-title">Data Sources</h3>
+        <p class="text-muted">Feedback entries: @_feedbackCount | Confidence entries: @_confidenceCount</p>
+        <p class="text-muted">Data loaded from: @DataDir.Path</p>
+    </div>
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+        <a href="/learning" class="btn">Skills Gap Analysis</a>
+        <a href="/learning/resources" class="btn">Browse Resources</a>
+        <a href="/interview/prep" class="btn btn-primary">Interview Prep</a>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private CareerIntel.Intelligence.AdaptivePlan _plan = new();
+    private int _feedbackCount;
+    private int _confidenceCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var feedback = await LoadJsonAsync<List<InterviewFeedback>>("interview-feedback.json") ?? [];
+            var confidences = await LoadJsonAsync<List<InterviewQuestionConfidence>>("question-confidence.json") ?? [];
+
+            _feedbackCount = feedback.Count;
+            _confidenceCount = confidences.Count;
+
+            var engine = new AdaptiveLearningEngine();
+            _plan = engine.GeneratePlan(feedback, confidences);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to generate adaptive plan: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task<T?> LoadJsonAsync<T>(string fileName) where T : class
+    {
+        var path = Path.Combine(DataDir.Path, fileName);
+        if (!File.Exists(path))
+            return null;
+
+        var json = await File.ReadAllTextAsync(path);
+        return System.Text.Json.JsonSerializer.Deserialize<T>(json, new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+    }
+
+    private static string GetPriorityColor(string priority) => priority.ToUpperInvariant() switch
+    {
+        "CRITICAL" => "red",
+        "HIGH" => "orange",
+        "MEDIUM" => "yellow",
+        "LOW" => "gray",
+        _ => "gray"
+    };
+
+    private static string GetReadinessLabel(int readiness) => readiness switch
+    {
+        >= 80 => "Interview ready",
+        >= 60 => "Almost ready - fill key gaps",
+        >= 40 => "Significant gaps remain",
+        >= 20 => "Major preparation needed",
+        _ => "Just getting started"
+    };
+
+    private static string GetReadinessCss(int readiness) => readiness switch
+    {
+        >= 70 => "text-green",
+        >= 50 => "text-cyan",
+        >= 30 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetConfidenceCss(double confidence) => confidence switch
+    {
+        >= 80 => "text-green",
+        >= 60 => "text-cyan",
+        >= 40 => "text-yellow",
+        _ => "text-red"
+    };
+}

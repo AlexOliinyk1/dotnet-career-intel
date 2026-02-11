@@ -1,0 +1,263 @@
+@page "/salary"
+@inject VacancyRepository VacancyRepo
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Salary Intelligence</h1>
+    <p class="page-subtitle">Market salary analysis from scraped job vacancy data</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing salary data..." />
+
+@if (!_loading)
+{
+    @if (_salaryVacancies.Count == 0)
+    {
+        <div class="card">
+            <h3 class="card-title">No Salary Data Available</h3>
+            <p class="text-muted">No vacancies with salary information found. Run a scan to populate vacancy data with salary ranges.</p>
+            <a href="/jobs" class="btn btn-primary" style="margin-top: 1rem;">Browse Jobs</a>
+        </div>
+    }
+    else
+    {
+        <div class="card-grid">
+            <StatCard Label="Average Salary" Value="@FormatSalary(_avgSalary)"
+                      Sub="@($"based on {_salaryVacancies.Count} jobs")" CssClass="text-green" />
+            <StatCard Label="Median Salary" Value="@FormatSalary(_medianSalary)"
+                      Sub="middle of the range" CssClass="text-cyan" />
+            <StatCard Label="Minimum" Value="@FormatSalary(_minSalary)"
+                      Sub="lowest reported" />
+            <StatCard Label="Maximum" Value="@FormatSalary(_maxSalary)"
+                      Sub="highest reported" CssClass="text-yellow" />
+        </div>
+
+        <div class="card-grid" style="margin-top: 1.5rem;">
+            <div class="card">
+                <h3 class="card-title">Salary by Seniority Level</h3>
+                @if (_salaryBySeniority.Count > 0)
+                {
+                    <BarChart Data="@_salaryBySeniority" />
+                }
+                else
+                {
+                    <p class="text-muted">Not enough data for seniority breakdown</p>
+                }
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">Salary by Remote Policy</h3>
+                @if (_salaryByRemote.Count > 0)
+                {
+                    <BarChart Data="@_salaryByRemote" />
+                }
+                else
+                {
+                    <p class="text-muted">Not enough data for remote policy breakdown</p>
+                }
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 1.5rem;">
+            <h3 class="card-title">Salary Distribution by Seniority</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Seniority</th>
+                        <th>Count</th>
+                        <th>Avg Salary</th>
+                        <th>Min</th>
+                        <th>Max</th>
+                        <th>Range</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var group in _seniorityBreakdown)
+                    {
+                        <tr>
+                            <td>
+                                <StatusBadge Text="@group.Level.ToString()"
+                                             Color="@GetSeniorityColor(group.Level)" />
+                            </td>
+                            <td>@group.Count</td>
+                            <td><strong>@FormatSalary(group.AvgSalary)</strong></td>
+                            <td class="text-muted">@FormatSalary(group.MinSalary)</td>
+                            <td class="text-muted">@FormatSalary(group.MaxSalary)</td>
+                            <td>
+                                <div class="bar-chart" style="min-width: 120px;">
+                                    <div class="bar-track">
+                                        <div class="bar-fill" style="width: @(group.BarWidth)%"></div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Vacancies with Salary Data</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Company</th>
+                        <th>Title</th>
+                        <th>Salary Range</th>
+                        <th>Currency</th>
+                        <th>Seniority</th>
+                        <th>Remote</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in _salaryVacancies.Take(50))
+                    {
+                        <tr>
+                            <td><strong>@v.Company</strong></td>
+                            <td><a href="/jobs/@v.Id" class="truncate">@v.Title</a></td>
+                            <td>@FormatSalaryRange(v)</td>
+                            <td><span class="badge">@v.SalaryCurrency</span></td>
+                            <td>
+                                <StatusBadge Text="@v.SeniorityLevel.ToString()"
+                                             Color="@GetSeniorityColor(v.SeniorityLevel)" />
+                            </td>
+                            <td>
+                                <StatusBadge Text="@v.RemotePolicy.ToString()"
+                                             Color="@StatusBadge.GetColorForStatus(v.RemotePolicy.ToString())" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (_salaryVacancies.Count > 50)
+            {
+                <p class="text-muted" style="margin-top: 0.75rem;">
+                    Showing 50 of @_salaryVacancies.Count vacancies with salary data.
+                </p>
+            }
+        </div>
+
+        <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+            <a href="/salary/negotiate" class="btn btn-primary">Negotiation Tools</a>
+            <a href="/jobs" class="btn">Browse All Jobs</a>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private List<JobVacancy> _salaryVacancies = [];
+    private decimal _avgSalary;
+    private decimal _medianSalary;
+    private decimal _minSalary;
+    private decimal _maxSalary;
+    private Dictionary<string, int> _salaryBySeniority = [];
+    private Dictionary<string, int> _salaryByRemote = [];
+    private List<SeniorityGroup> _seniorityBreakdown = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var allVacancies = await VacancyRepo.GetVacanciesAsync();
+
+        _salaryVacancies = allVacancies
+            .Where(v => v.SalaryMin.HasValue)
+            .OrderByDescending(v => GetMidpoint(v))
+            .ToList();
+
+        if (_salaryVacancies.Count > 0)
+        {
+            var midpoints = _salaryVacancies.Select(GetMidpoint).OrderBy(m => m).ToList();
+
+            _avgSalary = midpoints.Average();
+            _medianSalary = midpoints[midpoints.Count / 2];
+            _minSalary = _salaryVacancies.Min(v => v.SalaryMin!.Value);
+            _maxSalary = _salaryVacancies.Max(v => v.SalaryMax ?? v.SalaryMin!.Value);
+
+            // Salary by seniority (as int for BarChart)
+            _salaryBySeniority = _salaryVacancies
+                .Where(v => v.SeniorityLevel != SeniorityLevel.Unknown)
+                .GroupBy(v => v.SeniorityLevel)
+                .OrderBy(g => g.Key)
+                .ToDictionary(
+                    g => g.Key.ToString(),
+                    g => (int)g.Average(v => GetMidpoint(v)));
+
+            // Salary by remote policy (as int for BarChart)
+            _salaryByRemote = _salaryVacancies
+                .Where(v => v.RemotePolicy != RemotePolicy.Unknown)
+                .GroupBy(v => v.RemotePolicy)
+                .OrderByDescending(g => g.Average(v => GetMidpoint(v)))
+                .ToDictionary(
+                    g => g.Key.ToString(),
+                    g => (int)g.Average(v => GetMidpoint(v)));
+
+            // Seniority breakdown table
+            var maxAvg = 1m;
+            var groups = _salaryVacancies
+                .GroupBy(v => v.SeniorityLevel)
+                .OrderBy(g => g.Key)
+                .Select(g =>
+                {
+                    var mids = g.Select(GetMidpoint).ToList();
+                    return new SeniorityGroup
+                    {
+                        Level = g.Key,
+                        Count = g.Count(),
+                        AvgSalary = mids.Average(),
+                        MinSalary = g.Min(v => v.SalaryMin!.Value),
+                        MaxSalary = g.Max(v => v.SalaryMax ?? v.SalaryMin!.Value)
+                    };
+                })
+                .ToList();
+
+            if (groups.Count > 0)
+                maxAvg = groups.Max(g => g.AvgSalary);
+
+            foreach (var g in groups)
+                g.BarWidth = maxAvg > 0 ? (int)(g.AvgSalary / maxAvg * 100) : 0;
+
+            _seniorityBreakdown = groups;
+        }
+
+        _loading = false;
+    }
+
+    private static decimal GetMidpoint(JobVacancy v) =>
+        v.SalaryMax.HasValue
+            ? (v.SalaryMin!.Value + v.SalaryMax.Value) / 2
+            : v.SalaryMin!.Value;
+
+    private static string FormatSalary(decimal salary) =>
+        salary >= 1000 ? $"${salary:N0}" : $"${salary:F0}";
+
+    private static string FormatSalaryRange(JobVacancy v)
+    {
+        if (!v.SalaryMin.HasValue)
+            return "N/A";
+        if (!v.SalaryMax.HasValue)
+            return $"${v.SalaryMin.Value:N0}+";
+        return $"${v.SalaryMin.Value:N0} - ${v.SalaryMax.Value:N0}";
+    }
+
+    private static string GetSeniorityColor(SeniorityLevel level) => level switch
+    {
+        SeniorityLevel.Intern => "gray",
+        SeniorityLevel.Junior => "green",
+        SeniorityLevel.Middle => "cyan",
+        SeniorityLevel.Senior => "blue",
+        SeniorityLevel.Lead => "yellow",
+        SeniorityLevel.Architect => "orange",
+        SeniorityLevel.Principal => "red",
+        _ => "gray"
+    };
+
+    private sealed class SeniorityGroup
+    {
+        public SeniorityLevel Level { get; set; }
+        public int Count { get; set; }
+        public decimal AvgSalary { get; set; }
+        public decimal MinSalary { get; set; }
+        public decimal MaxSalary { get; set; }
+        public int BarWidth { get; set; }
+    }
+}

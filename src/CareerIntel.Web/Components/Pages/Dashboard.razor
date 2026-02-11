@@ -1,0 +1,170 @@
+@page "/"
+@inject VacancyRepository VacancyRepo
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">Career intelligence overview at a glance</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading dashboard data..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Total Vacancies" Value="@_vacancies.Count.ToString("N0")"
+                  Sub="@($"across {_platformCount} platforms")" />
+        <StatCard Label="Remote Jobs" Value="@_remoteCount.ToString("N0")"
+                  Sub="@($"{_remotePercent:F0}% of total")" CssClass="text-green" />
+        <StatCard Label="Avg Salary" Value="@FormatSalary(_avgSalary)"
+                  Sub="@($"{_salaryCount} jobs with salary data")" CssClass="text-cyan" />
+        <StatCard Label="Proposals Sent" Value="@_proposalCount.ToString("N0")"
+                  Sub="LinkedIn outreach" />
+        <StatCard Label="Interviews" Value="@_interviewCount.ToString("N0")"
+                  Sub="Feedback recorded" CssClass="text-yellow" />
+        <StatCard Label="Platforms" Value="@_platformCount.ToString()"
+                  Sub="Active sources" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Recent Vacancies</h2>
+        @if (_recentVacancies.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Company</th>
+                        <th>Remote</th>
+                        <th>Seniority</th>
+                        <th>Platform</th>
+                        <th>Posted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in _recentVacancies)
+                    {
+                        <tr>
+                            <td><a href="/jobs/@v.Id" class="truncate">@v.Title</a></td>
+                            <td>@v.Company</td>
+                            <td>
+                                <StatusBadge Text="@v.RemotePolicy.ToString()"
+                                             Color="@StatusBadge.GetColorForStatus(v.RemotePolicy.ToString())" />
+                            </td>
+                            <td>@v.SeniorityLevel</td>
+                            <td><span class="badge">@v.SourcePlatform</span></td>
+                            <td class="text-muted">@v.PostedDate.ToString("MMM dd")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No vacancies found. Run a scan to get started.</p>
+        }
+    </div>
+
+    <div class="card-grid" style="margin-top: 1.5rem;">
+        <div class="card">
+            <h3 class="card-title">Quick Links</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <a href="/jobs" class="btn btn-primary">Browse Jobs</a>
+                <a href="/jobs/tech-demand" class="btn">Tech Demand Analysis</a>
+                <a href="/linkedin" class="btn">LinkedIn Proposals</a>
+                <a href="/applications" class="btn">Application Pipeline</a>
+                <a href="/interview/prep" class="btn">Interview Prep</a>
+                <a href="/learning" class="btn">Learning Plan</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">Top Platforms</h3>
+            @if (_platformBreakdown.Count > 0)
+            {
+                <BarChart Data="@_platformBreakdown" />
+            }
+            else
+            {
+                <p class="text-muted">No platform data yet</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<JobVacancy> _vacancies = [];
+    private List<JobVacancy> _recentVacancies = [];
+    private int _remoteCount;
+    private double _remotePercent;
+    private decimal _avgSalary;
+    private int _salaryCount;
+    private int _platformCount;
+    private int _proposalCount;
+    private int _interviewCount;
+    private Dictionary<string, int> _platformBreakdown = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _vacancies = await VacancyRepo.GetVacanciesAsync();
+
+        _recentVacancies = _vacancies
+            .OrderByDescending(v => v.ScrapedDate)
+            .Take(10)
+            .ToList();
+
+        _remoteCount = _vacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote);
+        _remotePercent = _vacancies.Count > 0
+            ? (double)_remoteCount / _vacancies.Count * 100
+            : 0;
+
+        var withSalary = _vacancies.Where(v => v.SalaryMin.HasValue).ToList();
+        _salaryCount = withSalary.Count;
+        _avgSalary = withSalary.Count > 0
+            ? withSalary.Average(v => v.SalaryMax.HasValue
+                ? (v.SalaryMin!.Value + v.SalaryMax.Value) / 2
+                : v.SalaryMin!.Value)
+            : 0;
+
+        _platformCount = _vacancies.Select(v => v.SourcePlatform).Distinct().Count();
+
+        _platformBreakdown = _vacancies
+            .GroupBy(v => v.SourcePlatform)
+            .OrderByDescending(g => g.Count())
+            .Take(8)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Load proposal count from linkedin-proposals.json
+        _proposalCount = await CountJsonArrayItemsAsync("linkedin-proposals.json");
+
+        // Load interview count from interview-feedback.json
+        _interviewCount = await CountJsonArrayItemsAsync("interview-feedback.json");
+
+        _loading = false;
+    }
+
+    private async Task<int> CountJsonArrayItemsAsync(string fileName)
+    {
+        var path = Path.Combine(DataDir.Path, fileName);
+        if (!File.Exists(path))
+            return 0;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                return doc.RootElement.GetArrayLength();
+        }
+        catch
+        {
+            // Silently handle malformed JSON
+        }
+
+        return 0;
+    }
+
+    private static string FormatSalary(decimal salary) =>
+        salary > 0 ? $"${salary:N0}" : "N/A";
+}

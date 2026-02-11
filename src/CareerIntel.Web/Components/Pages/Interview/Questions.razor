@@ -1,0 +1,266 @@
+@page "/interview/questions"
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Question Bank</h1>
+    <p class="page-subtitle">Browse interview questions by topic with confidence tracking</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading question bank..." />
+
+@if (!_loading)
+{
+    <div class="card-grid" style="margin-bottom: 1rem;">
+        <StatCard Label="Total Topics" Value="@_topics.Count.ToString()" />
+        <StatCard Label="Total Questions" Value="@_topics.Sum(t => t.Questions.Count).ToString()" />
+        <StatCard Label="Tracked Questions" Value="@_confidenceMap.Count.ToString()" />
+        <StatCard Label="Avg Confidence"
+                  Value="@(_confidenceMap.Count > 0 ? $"{_confidenceMap.Values.Average(c => c.ConfidenceLevel):F0}%" : "-")" />
+    </div>
+
+    <div class="card" style="margin-bottom: 1rem;">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Filter by Difficulty</label>
+                <select @bind="_difficultyFilter">
+                    <option value="">All Levels</option>
+                    <option value="Junior">Junior</option>
+                    <option value="Mid">Mid</option>
+                    <option value="Senior">Senior</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Search Questions</label>
+                <input type="text" @bind="_searchText" @bind:event="oninput"
+                       placeholder="Search questions, tags..." />
+            </div>
+        </div>
+    </div>
+
+    @foreach (var topic in _topics)
+    {
+        var filteredQuestions = GetFilteredQuestions(topic);
+        if (filteredQuestions.Count == 0)
+            continue;
+
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;"
+                 @onclick="() => ToggleTopic(topic.Id)">
+                <div>
+                    <h2 class="section-title" style="margin-bottom: 0;">@topic.Name</h2>
+                    <small class="text-muted">@topic.Description</small>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="badge">@filteredQuestions.Count questions</span>
+                    @{
+                        var topicConfidence = GetTopicConfidence(topic);
+                    }
+                    @if (topicConfidence >= 0)
+                    {
+                        <StatusBadge Text="@($"{topicConfidence:F0}% confident")"
+                                     Color="@(topicConfidence >= 70 ? "green" : topicConfidence >= 40 ? "yellow" : "red")" />
+                    }
+                    <span style="font-size: 1.2rem;">@(_expandedTopics.Contains(topic.Id) ? "v" : ">")</span>
+                </div>
+            </div>
+
+            @if (_expandedTopics.Contains(topic.Id))
+            {
+                <table class="data-table" style="margin-top: 0.75rem;">
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Difficulty</th>
+                            <th>Confidence</th>
+                            <th>Times Asked</th>
+                            <th>Expected Answer</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in filteredQuestions)
+                        {
+                            var confidence = GetConfidence(q.Question);
+
+                            <tr @onclick="() => ToggleAnswer(topic.Id + q.Question)" style="cursor: pointer;">
+                                <td style="max-width: 320px;">
+                                    @q.Question
+                                    @if (q.Tags.Count > 0)
+                                    {
+                                        <div style="margin-top: 0.25rem;">
+                                            @foreach (var tag in q.Tags.Take(4))
+                                            {
+                                                <span class="badge" style="font-size: 0.7rem; margin-right: 0.125rem;">@tag</span>
+                                            }
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <StatusBadge Text="@q.Difficulty"
+                                                 Color="@GetDifficultyColor(q.Difficulty)" />
+                                </td>
+                                <td>
+                                    @if (confidence is not null)
+                                    {
+                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                            <div style="width: 60px; height: 6px; background: var(--border-color); border-radius: 3px;">
+                                                <div style="width: @($"{confidence.ConfidenceLevel}%"); height: 100%;
+                                                            background: @(confidence.ConfidenceLevel >= 70 ? "var(--color-green)" :
+                                                                          confidence.ConfidenceLevel >= 40 ? "var(--color-yellow)" : "var(--color-red)");
+                                                            border-radius: 3px;"></div>
+                                            </div>
+                                            <span>@confidence.ConfidenceLevel%</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td class="text-muted">
+                                    @(confidence?.TimesAsked.ToString() ?? "-")
+                                </td>
+                                <td class="truncate" style="max-width: 200px;">
+                                    @(q.ExpectedAnswer.Length > 80 ? q.ExpectedAnswer[..80] + "..." : q.ExpectedAnswer)
+                                </td>
+                            </tr>
+
+                            @if (_expandedAnswers.Contains(topic.Id + q.Question))
+                            {
+                                <tr>
+                                    <td colspan="5" style="padding: 0.75rem; background: var(--bg-surface);">
+                                        <strong>Full Expected Answer:</strong>
+                                        <p style="margin: 0.5rem 0; white-space: pre-wrap;">@q.ExpectedAnswer</p>
+
+                                        @if (confidence is not null)
+                                        {
+                                            <div style="border-top: 1px solid var(--border-color); padding-top: 0.5rem; margin-top: 0.5rem;">
+                                                <strong>Confidence Tracking:</strong>
+                                                <div style="display: flex; gap: 1rem; margin-top: 0.25rem;">
+                                                    <span>Level: <strong>@confidence.ConfidenceLevel%</strong></span>
+                                                    <span>Asked: <strong>@confidence.TimesAsked</strong> times</span>
+                                                    <span>Answered Well: <strong>@confidence.TimesAnsweredWell</strong></span>
+                                                    @if (confidence.LastPracticed != default)
+                                                    {
+                                                        <span>Last Practiced: <strong>@confidence.LastPracticed.ToString("MMM dd, yyyy")</strong></span>
+                                                    }
+                                                </div>
+                                                @if (confidence.ImprovementAreas.Count > 0)
+                                                {
+                                                    <div style="margin-top: 0.25rem;">
+                                                        <span>Improvement Areas: </span>
+                                                        @foreach (var area in confidence.ImprovementAreas)
+                                                        {
+                                                            <span class="badge" style="margin-right: 0.125rem;">@area</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private string _difficultyFilter = "";
+    private string _searchText = "";
+
+    private List<TopicArea> _topics = [];
+    private Dictionary<string, InterviewQuestionConfidence> _confidenceMap = [];
+    private HashSet<string> _expandedTopics = [];
+    private HashSet<string> _expandedAnswers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _topics = InterviewTopicBank.GetAllTopics().ToList();
+
+        // Load confidence data if exists
+        var confidencePath = System.IO.Path.Combine(DataDir.Path, "question-confidence.json");
+        if (File.Exists(confidencePath))
+        {
+            try
+            {
+                var json = await File.ReadAllTextAsync(confidencePath);
+                var confidenceList = System.Text.Json.JsonSerializer.Deserialize<List<InterviewQuestionConfidence>>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+
+                _confidenceMap = confidenceList.ToDictionary(
+                    c => c.Question,
+                    c => c,
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                // Silently handle corrupted data
+                _confidenceMap = [];
+            }
+        }
+
+        _loading = false;
+    }
+
+    private List<StaticInterviewQuestion> GetFilteredQuestions(TopicArea topic)
+    {
+        var query = topic.Questions.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(_difficultyFilter))
+            query = query.Where(q => q.Difficulty.Equals(_difficultyFilter, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            var search = _searchText.Trim();
+            query = query.Where(q =>
+                q.Question.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                q.Tags.Any(t => t.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+                q.ExpectedAnswer.Contains(search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.ToList();
+    }
+
+    private double GetTopicConfidence(TopicArea topic)
+    {
+        var tracked = topic.Questions
+            .Select(q => GetConfidence(q.Question))
+            .Where(c => c is not null)
+            .ToList();
+
+        if (tracked.Count == 0)
+            return -1;
+
+        return tracked.Average(c => c!.ConfidenceLevel);
+    }
+
+    private InterviewQuestionConfidence? GetConfidence(string question)
+    {
+        _confidenceMap.TryGetValue(question, out var confidence);
+        return confidence;
+    }
+
+    private void ToggleTopic(string topicId)
+    {
+        if (!_expandedTopics.Remove(topicId))
+            _expandedTopics.Add(topicId);
+    }
+
+    private void ToggleAnswer(string key)
+    {
+        if (!_expandedAnswers.Remove(key))
+            _expandedAnswers.Add(key);
+    }
+
+    private static string GetDifficultyColor(string difficulty) => difficulty.ToLowerInvariant() switch
+    {
+        "junior" => "green",
+        "mid" => "yellow",
+        "senior" => "red",
+        _ => "gray"
+    };
+}

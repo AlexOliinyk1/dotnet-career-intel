@@ -1,0 +1,331 @@
+@page "/interview/mock"
+
+<div class="page-header">
+    <h1 class="page-title">Mock Interview</h1>
+    <p class="page-subtitle">Practice with timed questions, get scored, and identify weak areas</p>
+</div>
+
+@if (_session is null)
+{
+    <div class="card" style="margin-bottom: 1rem;">
+        <h2 class="section-title">Configure Session</h2>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Topics (select multiple)</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    @foreach (var topic in _availableTopics)
+                    {
+                        var isSelected = _selectedTopics.Contains(topic.Id);
+                        <button class="btn @(isSelected ? "btn-primary" : "")"
+                                @onclick="() => ToggleTopic(topic.Id)">
+                            @topic.Name
+                        </button>
+                    }
+                </div>
+                <small class="text-muted">Leave empty for all topics</small>
+            </div>
+        </div>
+
+        <div class="form-row" style="margin-top: 0.75rem;">
+            <div class="form-group">
+                <label>Difficulty</label>
+                <select @bind="_difficulty">
+                    <option value="all">All Levels</option>
+                    <option value="Junior">Junior</option>
+                    <option value="Mid">Mid</option>
+                    <option value="Senior">Senior</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Total Questions</label>
+                <input type="number" @bind="_totalQuestions" min="1" max="30" />
+            </div>
+            <div class="form-group">
+                <label>Questions Per Topic</label>
+                <input type="number" @bind="_questionsPerTopic" min="1" max="10" />
+            </div>
+            <div class="form-group" style="align-self: flex-end;">
+                <button class="btn btn-primary" @onclick="StartSession">Start Interview</button>
+            </div>
+        </div>
+    </div>
+}
+else if (_report is not null)
+{
+    @* Final Report *@
+    <div class="card-grid" style="margin-bottom: 1rem;">
+        <StatCard Label="Overall Score"
+                  Value="@($"{_report.AverageScore:F0}%")"
+                  CssClass="@(_report.AverageScore >= 70 ? "stat-success" : _report.AverageScore >= 40 ? "stat-warn" : "stat-danger")" />
+        <StatCard Label="Questions Answered"
+                  Value="@($"{_report.AnsweredQuestions}/{_report.TotalQuestions}")" />
+        <StatCard Label="Verdict"
+                  Value="@_report.Verdict.Split(' ')[0]"
+                  Sub="@string.Join(" ", _report.Verdict.Split(' ').Skip(1))" />
+    </div>
+
+    <div class="card" style="margin-bottom: 1rem;">
+        <h2 class="section-title">Per-Topic Scores</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Topic</th>
+                    <th>Avg Score</th>
+                    <th>Questions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var ts in _report.TopicScores)
+                {
+                    <tr>
+                        <td>@ts.Topic</td>
+                        <td>
+                            <StatusBadge Text="@($"{ts.AverageScore:F0}%")"
+                                         Color="@(ts.AverageScore >= 70 ? "green" : ts.AverageScore >= 40 ? "yellow" : "red")" />
+                        </td>
+                        <td>@ts.QuestionCount</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (_report.ImprovementAreas.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <h2 class="section-title">Areas for Improvement</h2>
+            <ul style="margin: 0; padding-left: 1.25rem;">
+                @foreach (var area in _report.ImprovementAreas)
+                {
+                    <li>@area</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @* Individual question review *@
+    <div class="card" style="margin-bottom: 1rem;">
+        <h2 class="section-title">Question Review</h2>
+        @foreach (var q in _session.Questions.Where(q => q.Score is not null))
+        {
+            <div style="border-bottom: 1px solid var(--border-color); padding: 0.75rem 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong>@q.Question</strong>
+                    <StatusBadge Text="@($"{q.Score!.Score}%")"
+                                 Color="@(q.Score.Score >= 70 ? "green" : q.Score.Score >= 40 ? "yellow" : "red")" />
+                </div>
+                <small class="text-muted">@q.Topic | @q.Difficulty</small>
+                <p style="margin: 0.25rem 0;">@q.Score.Feedback</p>
+
+                @if (q.Score.MissedKeyPoints.Count > 0)
+                {
+                    <div style="margin-top: 0.25rem;">
+                        <strong style="color: var(--color-red);">Missed Key Points:</strong>
+                        <ul style="margin: 0.25rem 0; padding-left: 1.25rem;">
+                            @foreach (var point in q.Score.MissedKeyPoints)
+                            {
+                                <li class="text-muted">@point</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <button class="btn btn-primary" @onclick="Reset">New Session</button>
+}
+else
+{
+    @* Active session: show current question *@
+    var current = _session.Questions[_currentIndex];
+
+    <div class="card-grid" style="margin-bottom: 1rem;">
+        <StatCard Label="Question"
+                  Value="@($"{_currentIndex + 1} / {_session.Questions.Count}")" />
+        <StatCard Label="Topic" Value="@current.Topic" />
+        <StatCard Label="Difficulty" Value="@current.Difficulty" />
+    </div>
+
+    <div class="card" style="margin-bottom: 1rem;">
+        <h2 class="section-title">@current.Question</h2>
+
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <span class="badge">@current.Topic</span>
+            <StatusBadge Text="@current.Difficulty"
+                         Color="@GetDifficultyColor(current.Difficulty)" />
+            @foreach (var tag in current.Tags.Take(3))
+            {
+                <span class="badge">@tag</span>
+            }
+        </div>
+
+        @if (_showHints && current.Hints.Count > 0)
+        {
+            <div style="background: var(--bg-surface); padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 0.75rem;">
+                <strong>Hints:</strong>
+                <ul style="margin: 0.25rem 0; padding-left: 1.25rem;">
+                    @foreach (var hint in current.Hints)
+                    {
+                        <li class="text-muted">@hint</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        <div class="form-group">
+            <label>Your Answer</label>
+            <textarea @bind="_currentAnswer" rows="8"
+                      placeholder="Type your answer here..."></textarea>
+        </div>
+
+        @if (_currentScore is not null)
+        {
+            <div style="background: var(--bg-surface); padding: 0.75rem; border-radius: 4px; margin-bottom: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <strong>Score:</strong>
+                    <StatusBadge Text="@($"{_currentScore.Score}%")"
+                                 Color="@(_currentScore.Score >= 70 ? "green" : _currentScore.Score >= 40 ? "yellow" : "red")" />
+                </div>
+                <p style="margin: 0 0 0.5rem 0;">@_currentScore.Feedback</p>
+
+                @if (_currentScore.MatchedKeyPoints.Count > 0)
+                {
+                    <div>
+                        <strong style="color: var(--color-green);">Matched:</strong>
+                        <ul style="margin: 0.25rem 0; padding-left: 1.25rem;">
+                            @foreach (var point in _currentScore.MatchedKeyPoints)
+                            {
+                                <li>@point</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                @if (_currentScore.MissedKeyPoints.Count > 0)
+                {
+                    <div style="margin-top: 0.5rem;">
+                        <strong style="color: var(--color-red);">Missed:</strong>
+                        <ul style="margin: 0.25rem 0; padding-left: 1.25rem;">
+                            @foreach (var point in _currentScore.MissedKeyPoints)
+                            {
+                                <li class="text-muted">@point</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        }
+
+        <div style="display: flex; gap: 0.5rem;">
+            @if (_currentScore is null)
+            {
+                <button class="btn" @onclick="() => _showHints = !_showHints">
+                    @(_showHints ? "Hide Hints" : "Show Hints")
+                </button>
+                <button class="btn btn-primary" @onclick="SubmitAnswer"
+                        disabled="@string.IsNullOrWhiteSpace(_currentAnswer)">
+                    Submit Answer
+                </button>
+            }
+            else if (_currentIndex < _session.Questions.Count - 1)
+            {
+                <button class="btn btn-primary" @onclick="NextQuestion">Next Question</button>
+            }
+            else
+            {
+                <button class="btn btn-primary" @onclick="FinishSession">Finish Interview</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private readonly MockInterviewSimulator _simulator = new();
+    private List<TopicArea> _availableTopics = [];
+    private HashSet<string> _selectedTopics = [];
+
+    private string _difficulty = "all";
+    private int _totalQuestions = 10;
+    private int _questionsPerTopic = 3;
+
+    private MockInterviewSession? _session;
+    private MockInterviewReport? _report;
+    private int _currentIndex;
+    private string _currentAnswer = "";
+    private AnswerScore? _currentScore;
+    private bool _showHints;
+
+    protected override void OnInitialized()
+    {
+        _availableTopics = InterviewTopicBank.GetAllTopics().ToList();
+    }
+
+    private void ToggleTopic(string topicId)
+    {
+        if (!_selectedTopics.Remove(topicId))
+            _selectedTopics.Add(topicId);
+    }
+
+    private void StartSession()
+    {
+        var config = new MockInterviewConfig
+        {
+            Topics = _selectedTopics.ToList(),
+            Difficulty = _difficulty,
+            TotalQuestions = _totalQuestions,
+            QuestionsPerTopic = _questionsPerTopic
+        };
+
+        _session = _simulator.CreateSession(config);
+        _currentIndex = 0;
+        _currentAnswer = "";
+        _currentScore = null;
+        _showHints = false;
+        _report = null;
+    }
+
+    private void SubmitAnswer()
+    {
+        if (_session is null || string.IsNullOrWhiteSpace(_currentAnswer))
+            return;
+
+        var question = _session.Questions[_currentIndex];
+        question.UserAnswer = _currentAnswer;
+        _currentScore = _simulator.ScoreAnswer(question, _currentAnswer);
+        question.Score = _currentScore;
+    }
+
+    private void NextQuestion()
+    {
+        _currentIndex++;
+        _currentAnswer = "";
+        _currentScore = null;
+        _showHints = false;
+    }
+
+    private void FinishSession()
+    {
+        if (_session is null) return;
+        _report = _simulator.ScoreSession(_session);
+    }
+
+    private void Reset()
+    {
+        _session = null;
+        _report = null;
+        _currentIndex = 0;
+        _currentAnswer = "";
+        _currentScore = null;
+        _showHints = false;
+    }
+
+    private static string GetDifficultyColor(string difficulty) => difficulty.ToLowerInvariant() switch
+    {
+        "junior" => "green",
+        "mid" => "yellow",
+        "senior" => "red",
+        _ => "gray"
+    };
+}

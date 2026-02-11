@@ -1,0 +1,290 @@
+@page "/resume"
+@inject VacancyRepository VacancyRepo
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Resume Builder</h1>
+    <p class="page-subtitle">Generate tailored resumes and cover letters for specific job vacancies</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading vacancies..." />
+
+@if (!_loading)
+{
+    <div class="card">
+        <h2 class="card-title">Select Target Vacancy</h2>
+        <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+                <label>Target Vacancy</label>
+                <select @bind="_selectedVacancyId" style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;">
+                    <option value="">-- Select a vacancy --</option>
+                    @foreach (var v in _vacancies)
+                    {
+                        <option value="@v.Id">@v.Title - @v.Company (@v.SeniorityLevel)</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <button class="btn btn-primary" @onclick="GenerateResume" disabled="@(string.IsNullOrEmpty(_selectedVacancyId))">
+                Generate Resume
+            </button>
+            <button class="btn" @onclick="GenerateCoverLetter" disabled="@(string.IsNullOrEmpty(_selectedVacancyId))">
+                Generate Cover Letter
+            </button>
+        </div>
+    </div>
+
+    @if (_selectedVacancy is not null)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Vacancy Details</h2>
+            <div class="card-grid">
+                <StatCard Label="Company" Value="@_selectedVacancy.Company" />
+                <StatCard Label="Position" Value="@_selectedVacancy.Title" />
+                <StatCard Label="Seniority" Value="@_selectedVacancy.SeniorityLevel.ToString()" />
+                <StatCard Label="Remote Policy" Value="@_selectedVacancy.RemotePolicy.ToString()" />
+            </div>
+
+            @if (_selectedVacancy.RequiredSkills.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 class="section-title">Required Skills</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var skill in _selectedVacancy.RequiredSkills)
+                        {
+                            var hasSkill = _yourSkills.Contains(skill, StringComparer.OrdinalIgnoreCase);
+                            <StatusBadge Text="@skill" Color="@(hasSkill ? "green" : "red")" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_selectedVacancy.PreferredSkills.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 class="section-title">Preferred Skills</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var skill in _selectedVacancy.PreferredSkills)
+                        {
+                            var hasSkill = _yourSkills.Contains(skill, StringComparer.OrdinalIgnoreCase);
+                            <StatusBadge Text="@skill" Color="@(hasSkill ? "green" : "yellow")" />
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_showResume)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Generated Resume Sections</h2>
+
+            <div class="stat-card" style="margin-top: 1rem;">
+                <h3 class="section-title">Professional Summary</h3>
+                <p>
+                    Senior .NET Software Engineer with extensive experience in @string.Join(", ", _matchingSkills.Take(5))
+                    and a proven track record of delivering scalable backend systems. Seeking the
+                    @(_selectedVacancy?.Title ?? "Software Engineer") role at @(_selectedVacancy?.Company ?? "the company")
+                    to leverage deep expertise in modern .NET development.
+                </p>
+            </div>
+
+            <div class="stat-card" style="margin-top: 1rem;">
+                <h3 class="section-title">Skills Match</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Required Skill</th>
+                            <th>Your Status</th>
+                            <th>Resume Highlight</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var skill in _selectedVacancy?.RequiredSkills ?? [])
+                        {
+                            var hasSkill = _yourSkills.Contains(skill, StringComparer.OrdinalIgnoreCase);
+                            <tr>
+                                <td><strong>@skill</strong></td>
+                                <td>
+                                    <StatusBadge Text="@(hasSkill ? "Match" : "Gap")"
+                                                 Color="@(hasSkill ? "green" : "red")" />
+                                </td>
+                                <td>
+                                    @if (hasSkill)
+                                    {
+                                        @($"Highlight {skill} projects and experience prominently")
+                                    }
+                                    else
+                                    {
+                                        @($"Emphasize transferable skills and willingness to learn {skill}")
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="stat-card" style="margin-top: 1rem;">
+                <h3 class="section-title">Suggested Experience Bullets</h3>
+                <ul style="margin: 0; padding-left: 1.5rem;">
+                    @foreach (var bullet in _suggestedBullets)
+                    {
+                        <li style="padding: 0.3rem 0;">@bullet</li>
+                    }
+                </ul>
+            </div>
+
+            <div class="stat-card" style="margin-top: 1rem;">
+                <h3 class="section-title">ATS Keywords to Include</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                    @foreach (var keyword in _atsKeywords)
+                    {
+                        <span class="badge">@keyword</span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_showCoverLetter)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Generated Cover Letter</h2>
+
+            <div class="stat-card" style="margin-top: 1rem;">
+                <div style="white-space: pre-line; line-height: 1.6;">Dear Hiring Manager at @(_selectedVacancy?.Company ?? "the company"),
+
+I am writing to express my strong interest in the @(_selectedVacancy?.Title ?? "Software Engineer") position. With extensive experience in @string.Join(", ", _matchingSkills.Take(3)), I am confident in my ability to contribute effectively to your team.
+
+My background includes building high-performance .NET applications, designing scalable distributed systems, and collaborating with cross-functional teams to deliver quality software. I am particularly drawn to this opportunity because of the focus on @string.Join(" and ", _selectedVacancy?.RequiredSkills.Take(2) ?? ["modern technologies"]).
+
+I look forward to discussing how my skills and experience align with your team's needs.
+
+Best regards,
+[Your Name]</div>
+            </div>
+        </div>
+    }
+
+    @if (!_showResume && !_showCoverLetter && _selectedVacancy is null)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h3 class="card-title">How to Use</h3>
+            <ol style="padding-left: 1.5rem; line-height: 2;">
+                <li>Select a target vacancy from the dropdown above</li>
+                <li>Click <strong>Generate Resume</strong> to create tailored resume sections</li>
+                <li>Click <strong>Generate Cover Letter</strong> for a customized cover letter</li>
+                <li>Review the skills match analysis to optimize your application</li>
+            </ol>
+        </div>
+    }
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+        <a href="/resume/simulator" class="btn btn-primary">Resume Simulator</a>
+        <a href="/jobs" class="btn">Browse Jobs</a>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<JobVacancy> _vacancies = [];
+    private string _selectedVacancyId = "";
+    private JobVacancy? _selectedVacancy;
+    private bool _showResume;
+    private bool _showCoverLetter;
+    private List<string> _matchingSkills = [];
+    private List<string> _suggestedBullets = [];
+    private List<string> _atsKeywords = [];
+
+    // Placeholder profile skills
+    private static readonly List<string> _yourSkills =
+    [
+        "C#", ".NET", "ASP.NET Core", "Entity Framework", "SQL", "Azure",
+        "Docker", "REST API", "Microservices", "Git", "TypeScript", "React",
+        "Unit Testing", "CI/CD", "Redis", "RabbitMQ", "Blazor", "gRPC"
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _vacancies = (await VacancyRepo.GetVacanciesAsync())
+            .OrderByDescending(v => v.ScrapedDate)
+            .Take(50)
+            .ToList();
+
+        _loading = false;
+    }
+
+    private void GenerateResume()
+    {
+        _selectedVacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
+        if (_selectedVacancy is null)
+            return;
+
+        _matchingSkills = _selectedVacancy.RequiredSkills
+            .Where(s => _yourSkills.Contains(s, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        _suggestedBullets = GenerateBullets(_selectedVacancy);
+        _atsKeywords = GenerateAtsKeywords(_selectedVacancy);
+        _showResume = true;
+        _showCoverLetter = false;
+    }
+
+    private void GenerateCoverLetter()
+    {
+        _selectedVacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
+        if (_selectedVacancy is null)
+            return;
+
+        _matchingSkills = _selectedVacancy.RequiredSkills
+            .Where(s => _yourSkills.Contains(s, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        _showCoverLetter = true;
+        _showResume = false;
+    }
+
+    private static List<string> GenerateBullets(JobVacancy vacancy)
+    {
+        var bullets = new List<string>
+        {
+            $"Designed and implemented scalable backend services using .NET and C#, serving requirements aligned with {vacancy.Company}'s technology stack",
+            "Built RESTful APIs with ASP.NET Core handling 10K+ requests/second with comprehensive error handling and logging",
+            "Optimized database queries and implemented caching strategies reducing average response times by 40%"
+        };
+
+        if (vacancy.RequiredSkills.Any(s => s.Contains("Azure", StringComparison.OrdinalIgnoreCase) ||
+                                             s.Contains("Cloud", StringComparison.OrdinalIgnoreCase)))
+        {
+            bullets.Add("Deployed and managed cloud-native applications on Azure with CI/CD pipelines");
+        }
+
+        if (vacancy.RequiredSkills.Any(s => s.Contains("Microservice", StringComparison.OrdinalIgnoreCase)))
+        {
+            bullets.Add("Architected microservices-based systems with event-driven communication using RabbitMQ and Azure Service Bus");
+        }
+
+        if (vacancy.RequiredSkills.Any(s => s.Contains("Docker", StringComparison.OrdinalIgnoreCase) ||
+                                             s.Contains("Kubernetes", StringComparison.OrdinalIgnoreCase)))
+        {
+            bullets.Add("Containerized applications with Docker and orchestrated deployments using Kubernetes");
+        }
+
+        bullets.Add("Collaborated with product managers and designers to translate business requirements into technical solutions");
+        bullets.Add("Mentored junior developers through code reviews, pair programming, and knowledge-sharing sessions");
+
+        return bullets;
+    }
+
+    private static List<string> GenerateAtsKeywords(JobVacancy vacancy)
+    {
+        var keywords = new List<string>(vacancy.RequiredSkills);
+        keywords.AddRange(vacancy.PreferredSkills);
+        keywords.AddRange(["Software Engineer", "Backend", "Full Stack", vacancy.SeniorityLevel.ToString()]);
+
+        return keywords.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+}

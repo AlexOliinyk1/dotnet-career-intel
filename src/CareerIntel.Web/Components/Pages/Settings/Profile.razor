@@ -1,0 +1,352 @@
+@page "/settings/profile"
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Profile</h1>
+    <p class="page-subtitle">Manage your career profile, skills, and preferences</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading profile..." />
+
+@if (!_loading)
+{
+    <div class="card" style="margin-top: 1rem;">
+        <h2 class="card-title">Personal Information</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" @bind="_name" placeholder="Your full name" />
+            </div>
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" @bind="_title" placeholder="e.g. Senior .NET Developer" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" @bind="_email" placeholder="your@email.com" />
+            </div>
+            <div class="form-group">
+                <label>Location</label>
+                <input type="text" @bind="_location" placeholder="e.g. Berlin, Germany" />
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Skills</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+            @foreach (var skill in _skills)
+            {
+                <span class="badge badge-blue" style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                    @skill
+                    <button style="background: none; border: none; cursor: pointer; padding: 0; font-size: 0.9rem; opacity: 0.7; color: inherit;"
+                            @onclick="() => RemoveSkill(skill)">
+                        x
+                    </button>
+                </span>
+            }
+            @if (_skills.Count == 0)
+            {
+                <span class="text-muted">No skills added yet</span>
+            }
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <input type="text" @bind="_newSkill" @bind:event="oninput"
+                   @onkeydown="OnSkillKeyDown"
+                   placeholder="Add a skill (e.g. C#, Docker, Azure)" />
+            <button class="btn btn-primary" @onclick="AddSkill"
+                    disabled="@string.IsNullOrWhiteSpace(_newSkill)">
+                Add
+            </button>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Experience</h2>
+        @if (_experiences.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Company</th>
+                        <th>Title</th>
+                        <th>Years</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var exp in _experiences)
+                    {
+                        <tr>
+                            <td>@exp.Company</td>
+                            <td>@exp.Title</td>
+                            <td>@exp.Years</td>
+                            <td>
+                                <button class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                        @onclick="() => RemoveExperience(exp)">
+                                    Remove
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No experience entries yet.</p>
+        }
+
+        <h3 class="section-title" style="margin-top: 1rem;">Add Experience</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Company</label>
+                <input type="text" @bind="_newExpCompany" placeholder="Company name" />
+            </div>
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" @bind="_newExpTitle" placeholder="Job title" />
+            </div>
+            <div class="form-group">
+                <label>Years</label>
+                <input type="number" min="0" max="50" step="0.5" @bind="_newExpYears" />
+            </div>
+        </div>
+        <button class="btn" style="margin-top: 0.5rem;" @onclick="AddExperience"
+                disabled="@string.IsNullOrWhiteSpace(_newExpCompany)">
+            Add Experience
+        </button>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Preferences</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Minimum Salary (USD)</label>
+                <input type="number" min="0" step="1000" @bind="_minSalary" />
+            </div>
+            <div class="form-group">
+                <label>Target Salary (USD)</label>
+                <input type="number" min="0" step="1000" @bind="_targetSalary" />
+            </div>
+            <div class="form-group">
+                <label>Remote Only</label>
+                <select @bind="_remoteOnly">
+                    <option value="true">Yes - Remote only</option>
+                    <option value="false">No - Open to on-site/hybrid</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: center;">
+        <button class="btn btn-primary" @onclick="SaveProfile">Save Profile</button>
+        @if (_saveMessage is not null)
+        {
+            <span class="badge badge-@(_saveSuccess ? "green" : "red")">@_saveMessage</span>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+
+    // Personal
+    private string _name = "";
+    private string _title = "";
+    private string _email = "";
+    private string _location = "";
+
+    // Skills
+    private List<string> _skills = [];
+    private string _newSkill = "";
+
+    // Experience
+    private List<ExperienceEntry> _experiences = [];
+    private string _newExpCompany = "";
+    private string _newExpTitle = "";
+    private double _newExpYears = 1;
+
+    // Preferences
+    private int _minSalary;
+    private int _targetSalary;
+    private string _remoteOnly = "true";
+
+    // Save state
+    private string? _saveMessage;
+    private bool _saveSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProfile();
+        _loading = false;
+    }
+
+    private async Task LoadProfile()
+    {
+        var path = Path.Combine(DataDir.Path, "my-profile.json");
+        if (!File.Exists(path))
+            return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Personal
+            if (root.TryGetProperty("personal", out var personal))
+            {
+                if (personal.TryGetProperty("name", out var name))
+                    _name = name.GetString() ?? "";
+                if (personal.TryGetProperty("title", out var title))
+                    _title = title.GetString() ?? "";
+                if (personal.TryGetProperty("email", out var email))
+                    _email = email.GetString() ?? "";
+                if (personal.TryGetProperty("location", out var location))
+                    _location = location.GetString() ?? "";
+            }
+
+            // Skills
+            if (root.TryGetProperty("skills", out var skills) && skills.ValueKind == JsonValueKind.Array)
+            {
+                _skills = [];
+                foreach (var skill in skills.EnumerateArray())
+                {
+                    var val = skill.GetString();
+                    if (!string.IsNullOrWhiteSpace(val))
+                        _skills.Add(val);
+                }
+            }
+
+            // Experiences
+            if (root.TryGetProperty("experiences", out var experiences) && experiences.ValueKind == JsonValueKind.Array)
+            {
+                _experiences = [];
+                foreach (var exp in experiences.EnumerateArray())
+                {
+                    _experiences.Add(new ExperienceEntry
+                    {
+                        Company = exp.TryGetProperty("company", out var c) ? c.GetString() ?? "" : "",
+                        Title = exp.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                        Years = exp.TryGetProperty("years", out var y) ? y.GetDouble() : 0
+                    });
+                }
+            }
+
+            // Preferences
+            if (root.TryGetProperty("preferences", out var prefs))
+            {
+                if (prefs.TryGetProperty("minSalaryUsd", out var minSal))
+                    _minSalary = minSal.GetInt32();
+                if (prefs.TryGetProperty("targetSalaryUsd", out var targetSal))
+                    _targetSalary = targetSal.GetInt32();
+                if (prefs.TryGetProperty("remoteOnly", out var remote))
+                    _remoteOnly = remote.GetBoolean() ? "true" : "false";
+            }
+        }
+        catch
+        {
+            // Use defaults on parse failure
+        }
+    }
+
+    private async Task SaveProfile()
+    {
+        try
+        {
+            var profile = new
+            {
+                personal = new
+                {
+                    name = _name,
+                    title = _title,
+                    email = _email,
+                    location = _location
+                },
+                skills = _skills,
+                experiences = _experiences.Select(e => new
+                {
+                    company = e.Company,
+                    title = e.Title,
+                    years = e.Years
+                }),
+                preferences = new
+                {
+                    minSalaryUsd = _minSalary,
+                    targetSalaryUsd = _targetSalary,
+                    remoteOnly = _remoteOnly == "true"
+                }
+            };
+
+            var json = JsonSerializer.Serialize(profile, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(Path.Combine(DataDir.Path, "my-profile.json"), json);
+
+            _saveSuccess = true;
+            _saveMessage = "Profile saved successfully";
+        }
+        catch (Exception ex)
+        {
+            _saveSuccess = false;
+            _saveMessage = $"Error: {ex.Message}";
+        }
+
+        _ = Task.Delay(3000).ContinueWith(_ =>
+        {
+            _saveMessage = null;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void AddSkill()
+    {
+        var skill = _newSkill.Trim();
+        if (!string.IsNullOrWhiteSpace(skill) && !_skills.Contains(skill, StringComparer.OrdinalIgnoreCase))
+        {
+            _skills.Add(skill);
+            _newSkill = "";
+        }
+    }
+
+    private void RemoveSkill(string skill)
+    {
+        _skills.Remove(skill);
+    }
+
+    private void OnSkillKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            AddSkill();
+    }
+
+    private void AddExperience()
+    {
+        if (string.IsNullOrWhiteSpace(_newExpCompany))
+            return;
+
+        _experiences.Add(new ExperienceEntry
+        {
+            Company = _newExpCompany.Trim(),
+            Title = _newExpTitle.Trim(),
+            Years = _newExpYears
+        });
+
+        _newExpCompany = "";
+        _newExpTitle = "";
+        _newExpYears = 1;
+    }
+
+    private void RemoveExperience(ExperienceEntry exp)
+    {
+        _experiences.Remove(exp);
+    }
+
+    private sealed class ExperienceEntry
+    {
+        public string Company { get; set; } = "";
+        public string Title { get; set; } = "";
+        public double Years { get; set; }
+    }
+}

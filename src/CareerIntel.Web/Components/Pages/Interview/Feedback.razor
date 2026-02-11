@@ -1,0 +1,265 @@
+@page "/interview/feedback"
+@inject InterviewRepository InterviewRepo
+
+<div class="page-header">
+    <h1 class="page-title">Interview Feedback</h1>
+    <p class="page-subtitle">Record and review feedback from real interviews to track patterns and improve</p>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+    <h2 class="section-title">Record New Feedback</h2>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label>Company</label>
+            <input type="text" @bind="_newFeedback.Company" placeholder="Company name" />
+        </div>
+        <div class="form-group">
+            <label>Round</label>
+            <select @bind="_newFeedback.Round">
+                <option value="Recruiter">Recruiter</option>
+                <option value="Technical">Technical</option>
+                <option value="SystemDesign">System Design</option>
+                <option value="Behavioral">Behavioral</option>
+                <option value="Final">Final</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Outcome</label>
+            <select @bind="_newFeedback.Outcome">
+                <option value="Passed">Passed</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Ghosted">Ghosted</option>
+                <option value="Withdrew">Withdrew</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Difficulty (1-10)</label>
+            <input type="number" @bind="_newFeedback.DifficultyRating" min="1" max="10" />
+        </div>
+    </div>
+
+    <div class="form-row" style="margin-top: 0.75rem;">
+        <div class="form-group">
+            <label>Interview Date</label>
+            <input type="date" @bind="_interviewDate" />
+        </div>
+    </div>
+
+    <div class="form-group" style="margin-top: 0.75rem;">
+        <label>Feedback / Notes</label>
+        <textarea @bind="_newFeedback.Feedback" rows="4"
+                  placeholder="What happened during the interview? What questions were asked?"></textarea>
+    </div>
+
+    <div class="form-row" style="margin-top: 0.75rem;">
+        <div class="form-group">
+            <label>Weak Areas (comma-separated)</label>
+            <input type="text" @bind="_weakAreasText"
+                   placeholder="e.g. System Design, Concurrency, SQL Optimization" />
+        </div>
+        <div class="form-group">
+            <label>Strong Areas (comma-separated)</label>
+            <input type="text" @bind="_strongAreasText"
+                   placeholder="e.g. C# Internals, API Design, Communication" />
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_saveMessage))
+    {
+        <div style="margin-top: 0.5rem;">
+            <StatusBadge Text="@_saveMessage" Color="@(_saveSuccess ? "green" : "red")" />
+        </div>
+    }
+
+    <div style="margin-top: 0.75rem;">
+        <button class="btn btn-primary" @onclick="SaveFeedback"
+                disabled="@(string.IsNullOrWhiteSpace(_newFeedback.Company) || _saving)">
+            @(_saving ? "Saving..." : "Save Feedback")
+        </button>
+    </div>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading feedback history..." />
+
+@if (!_loading)
+{
+    <div class="card-grid" style="margin-bottom: 1rem;">
+        <StatCard Label="Total Interviews" Value="@_feedbacks.Count.ToString()" />
+        <StatCard Label="Passed"
+                  Value="@_feedbacks.Count(f => f.Outcome == "Passed").ToString()"
+                  CssClass="stat-success" />
+        <StatCard Label="Rejected"
+                  Value="@_feedbacks.Count(f => f.Outcome == "Rejected").ToString()"
+                  CssClass="stat-danger" />
+        <StatCard Label="Avg Difficulty"
+                  Value="@(_feedbacks.Count > 0 ? $"{_feedbacks.Average(f => f.DifficultyRating):F1}" : "-")" />
+    </div>
+
+    @if (_feedbacks.Count > 0)
+    {
+        <div class="card">
+            <h2 class="section-title">Feedback History</h2>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Company</th>
+                        <th>Round</th>
+                        <th>Outcome</th>
+                        <th>Rating</th>
+                        <th>Weak Areas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in _feedbacks)
+                    {
+                        <tr @onclick="() => ToggleDetail(f.Id)" style="cursor: pointer;">
+                            <td class="text-muted">@f.InterviewDate.ToString("MMM dd, yyyy")</td>
+                            <td><strong>@f.Company</strong></td>
+                            <td><span class="badge">@f.Round</span></td>
+                            <td>
+                                <StatusBadge Text="@f.Outcome"
+                                             Color="@GetOutcomeColor(f.Outcome)" />
+                            </td>
+                            <td class="text-cyan">@f.DifficultyRating/10</td>
+                            <td class="truncate" style="max-width: 200px;">
+                                @(f.WeakAreas.Count > 0 ? string.Join(", ", f.WeakAreas) : "-")
+                            </td>
+                        </tr>
+
+                        @if (_expandedFeedbackId == f.Id)
+                        {
+                            <tr>
+                                <td colspan="6" style="padding: 0.75rem; background: var(--bg-surface);">
+                                    @if (!string.IsNullOrWhiteSpace(f.Feedback))
+                                    {
+                                        <div style="margin-bottom: 0.5rem;">
+                                            <strong>Feedback:</strong>
+                                            <p style="margin: 0.25rem 0; white-space: pre-wrap;">@f.Feedback</p>
+                                        </div>
+                                    }
+                                    @if (f.StrongAreas.Count > 0)
+                                    {
+                                        <div style="margin-bottom: 0.5rem;">
+                                            <strong style="color: var(--color-green);">Strong Areas:</strong>
+                                            @foreach (var area in f.StrongAreas)
+                                            {
+                                                <span class="badge" style="margin: 0.125rem;">@area</span>
+                                            }
+                                        </div>
+                                    }
+                                    @if (f.WeakAreas.Count > 0)
+                                    {
+                                        <div>
+                                            <strong style="color: var(--color-red);">Weak Areas:</strong>
+                                            @foreach (var area in f.WeakAreas)
+                                            {
+                                                <span class="badge" style="margin: 0.125rem;">@area</span>
+                                            }
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <p class="text-muted">No interview feedback recorded yet. Use the form above to record your first interview experience.</p>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private string _saveMessage = "";
+    private bool _saveSuccess;
+    private int? _expandedFeedbackId;
+
+    private List<InterviewFeedback> _feedbacks = [];
+    private InterviewFeedback _newFeedback = CreateEmptyFeedback();
+    private DateTime _interviewDate = DateTime.Today;
+    private string _weakAreasText = "";
+    private string _strongAreasText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _feedbacks = await InterviewRepo.GetAllFeedbackAsync();
+        _loading = false;
+    }
+
+    private async Task SaveFeedback()
+    {
+        if (string.IsNullOrWhiteSpace(_newFeedback.Company))
+            return;
+
+        _saving = true;
+        _saveMessage = "";
+
+        try
+        {
+            _newFeedback.InterviewDate = new DateTimeOffset(_interviewDate, TimeSpan.Zero);
+            _newFeedback.RecordedDate = DateTimeOffset.UtcNow;
+            _newFeedback.WeakAreas = ParseCommaSeparated(_weakAreasText);
+            _newFeedback.StrongAreas = ParseCommaSeparated(_strongAreasText);
+
+            await InterviewRepo.SaveFeedbackAsync(_newFeedback);
+
+            _feedbacks = await InterviewRepo.GetAllFeedbackAsync();
+
+            _newFeedback = CreateEmptyFeedback();
+            _interviewDate = DateTime.Today;
+            _weakAreasText = "";
+            _strongAreasText = "";
+            _saveMessage = "Feedback saved successfully";
+            _saveSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            _saveMessage = $"Failed to save: {ex.Message}";
+            _saveSuccess = false;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ToggleDetail(int id)
+    {
+        _expandedFeedbackId = _expandedFeedbackId == id ? null : id;
+    }
+
+    private static InterviewFeedback CreateEmptyFeedback() => new()
+    {
+        Round = "Technical",
+        Outcome = "Passed",
+        DifficultyRating = 5
+    };
+
+    private static List<string> ParseCommaSeparated(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return [];
+
+        return text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+    }
+
+    private static string GetOutcomeColor(string outcome) => outcome switch
+    {
+        "Passed" => "green",
+        "Rejected" => "red",
+        "Ghosted" => "gray",
+        "Withdrew" => "yellow",
+        _ => "gray"
+    };
+}

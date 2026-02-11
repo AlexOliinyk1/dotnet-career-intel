@@ -1,0 +1,301 @@
+@page "/applications/strategy"
+@inject DataDirectoryConfig DataDir
+@rendermode InteractiveServer
+
+<div class="page-header">
+    <h1 class="page-title">Strategy Advisor</h1>
+    <p>Data-driven pivots based on your application outcomes</p>
+</div>
+
+<LoadingSpinner Loading="_loading" Message="Analyzing strategy..." />
+
+@if (!_loading)
+{
+    @* Overview Stats *@
+    <div class="card-grid" style="margin-bottom: 1.5rem;">
+        <StatCard Label="Applications" Value="@_applications.Count.ToString()" />
+        <StatCard Label="Interviews" Value="@_feedback.Count.ToString()" />
+        <StatCard Label="Response Rate" Value="@FormatRate(ResponseRate)" CssClass="@(ResponseRate >= 0.2 ? "highlight-green" : "highlight-red")" />
+        <StatCard Label="Strategy Score" Value="@(_recommendation?.StrategyEffectiveness.ToString() ?? "0")"
+                  Sub="out of 100" CssClass="@GetEffectivenessClass()" />
+    </div>
+
+    @if (_recommendation == null)
+    {
+        <div class="card">
+            <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                Not enough data to generate strategy recommendations.
+                Apply to at least 10 positions first.
+            </p>
+        </div>
+    }
+    else
+    {
+        @* Actionable Advice *@
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">Actionable Advice</h3>
+            @if (_recommendation.Advice.Count > 0)
+            {
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    @foreach (var advice in _recommendation.Advice)
+                    {
+                        <div style="padding: 0.5rem 0; font-size: 0.95rem; white-space: pre-wrap;">@advice</div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p style="color: var(--text-muted);">No specific advice at this time. Keep applying and check back.</p>
+            }
+        </div>
+
+        @* Strategy Pivots *@
+        @if (_recommendation.Pivots.Count > 0)
+        {
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <h3 class="card-title">Identified Pivots</h3>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    @foreach (var pivot in _recommendation.Pivots.OrderByDescending(p => GetImpactOrder(p.Impact)))
+                    {
+                        <div class="card" style="padding: 1rem; border-left: 3px solid var(--color-@GetImpactColor(pivot.Impact), var(--border));">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <span class="section-title" style="margin: 0;">@pivot.Type</span>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <StatusBadge Text="@($"Impact: {pivot.Impact}")"
+                                                 Color="@GetImpactColor(pivot.Impact)" />
+                                    <StatusBadge Text="@($"Confidence: {pivot.Confidence}")"
+                                                 Color="@GetConfidenceColor(pivot.Confidence)" />
+                                </div>
+                            </div>
+                            <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                                @pivot.Finding
+                            </div>
+                            <div style="font-weight: 600; font-size: 0.95rem;">
+                                @pivot.Recommendation
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @* Response Rate Analysis *@
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">Response Rate Analysis</h3>
+            @if (_statusBreakdown.Count > 0)
+            {
+                <BarChart Data="_statusBreakdown" />
+            }
+            else
+            {
+                <p style="color: var(--text-muted);">No status data available.</p>
+            }
+        </div>
+
+        @* Application Timeline *@
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">Applications Over Time</h3>
+            @if (_appsPerMonth.Count > 0)
+            {
+                <BarChart Data="_appsPerMonth" />
+            }
+            else
+            {
+                <p style="color: var(--text-muted);">No timeline data available.</p>
+            }
+        </div>
+
+        @* Company Size Patterns *@
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">Company Patterns</h3>
+            @if (_companyFrequency.Count > 0)
+            {
+                <BarChart Data="_companyFrequency" />
+            }
+            else
+            {
+                <p style="color: var(--text-muted);">Not enough company data to show patterns.</p>
+            }
+        </div>
+
+        @* Match Score Distribution *@
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">Match Score Distribution</h3>
+            @if (_matchScoreBuckets.Count > 0)
+            {
+                <BarChart Data="_matchScoreBuckets" />
+                <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted);">
+                    Average match score: <strong class="@GetScoreTextClass(_avgMatchScore)">@($"{_avgMatchScore:F0}%")</strong>
+                </div>
+            }
+            else
+            {
+                <p style="color: var(--text-muted);">No match score data available.</p>
+            }
+        </div>
+
+        @* Interview Feedback Summary *@
+        @if (_feedback.Count > 0)
+        {
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <h3 class="card-title">Interview Feedback Summary</h3>
+                <div class="data-table" style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Company</th>
+                                <th>Round</th>
+                                <th>Outcome</th>
+                                <th>Difficulty</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var fb in _feedback.OrderByDescending(f => f.InterviewDate).Take(20))
+                            {
+                                <tr>
+                                    <td>@fb.Company</td>
+                                    <td>@fb.Round</td>
+                                    <td>
+                                        <StatusBadge Text="@fb.Outcome"
+                                                     Color="@StatusBadge.GetColorForStatus(fb.Outcome)" />
+                                    </td>
+                                    <td>@fb.DifficultyRating/10</td>
+                                    <td>@fb.InterviewDate.ToString("yyyy-MM-dd")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<JobApplication> _applications = [];
+    private List<InterviewFeedback> _feedback = [];
+    private StrategyRecommendation? _recommendation;
+    private Dictionary<string, int> _statusBreakdown = [];
+    private Dictionary<string, int> _appsPerMonth = [];
+    private Dictionary<string, int> _companyFrequency = [];
+    private Dictionary<string, int> _matchScoreBuckets = [];
+    private double _avgMatchScore;
+    private bool _loading = true;
+
+    private double ResponseRate => _applications.Count > 0
+        ? (double)_applications.Count(a => a.Status >= ApplicationStatus.Viewed) / _applications.Count
+        : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load applications
+        var appsPath = Path.Combine(DataDir.Path, "applications.json");
+        if (File.Exists(appsPath))
+        {
+            var json = await File.ReadAllTextAsync(appsPath);
+            _applications = JsonSerializer.Deserialize<List<JobApplication>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        }
+
+        // Load interview feedback
+        var feedbackPath = Path.Combine(DataDir.Path, "interview-feedback.json");
+        if (File.Exists(feedbackPath))
+        {
+            var json = await File.ReadAllTextAsync(feedbackPath);
+            _feedback = JsonSerializer.Deserialize<List<InterviewFeedback>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        }
+
+        // Run strategy analysis
+        if (_applications.Count > 0)
+        {
+            var advisor = new StrategyAdvisor();
+            _recommendation = advisor.AnalyzeStrategy(_applications, _feedback);
+
+            // Build status breakdown chart
+            _statusBreakdown = _applications
+                .GroupBy(a => a.Status.ToString())
+                .OrderByDescending(g => g.Count())
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            // Build timeline chart
+            _appsPerMonth = _applications
+                .GroupBy(a => a.CreatedDate.ToString("yyyy-MM"))
+                .OrderBy(g => g.Key)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            // Build company frequency chart
+            _companyFrequency = _applications
+                .Where(a => !string.IsNullOrEmpty(a.Company))
+                .GroupBy(a => a.Company, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Count())
+                .Take(10)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            // Build match score buckets
+            var scored = _applications.Where(a => a.MatchScore > 0).ToList();
+            if (scored.Count > 0)
+            {
+                _avgMatchScore = scored.Average(a => a.MatchScore);
+                _matchScoreBuckets = new Dictionary<string, int>
+                {
+                    ["90-100%"] = scored.Count(a => a.MatchScore >= 90),
+                    ["80-89%"] = scored.Count(a => a.MatchScore >= 80 && a.MatchScore < 90),
+                    ["70-79%"] = scored.Count(a => a.MatchScore >= 70 && a.MatchScore < 80),
+                    ["60-69%"] = scored.Count(a => a.MatchScore >= 60 && a.MatchScore < 70),
+                    ["50-59%"] = scored.Count(a => a.MatchScore >= 50 && a.MatchScore < 60),
+                    ["<50%"] = scored.Count(a => a.MatchScore < 50)
+                };
+            }
+        }
+
+        _loading = false;
+    }
+
+    private static string FormatRate(double rate) => $"{rate:P0}";
+
+    private string GetEffectivenessClass()
+    {
+        var score = _recommendation?.StrategyEffectiveness ?? 0;
+        return score switch
+        {
+            >= 60 => "highlight-green",
+            >= 30 => "highlight-yellow",
+            _ => "highlight-red"
+        };
+    }
+
+    private static string GetImpactColor(string impact) => impact switch
+    {
+        "Critical" => "red",
+        "High" => "red",
+        "Medium" => "yellow",
+        "Low" => "gray",
+        _ => "gray"
+    };
+
+    private static string GetConfidenceColor(string confidence) => confidence switch
+    {
+        "High" => "green",
+        "Medium" => "yellow",
+        "Low" => "red",
+        _ => "gray"
+    };
+
+    private static int GetImpactOrder(string impact) => impact switch
+    {
+        "Critical" => 4,
+        "High" => 3,
+        "Medium" => 2,
+        "Low" => 1,
+        _ => 0
+    };
+
+    private static string GetScoreTextClass(double score) => score switch
+    {
+        >= 80 => "text-green",
+        >= 60 => "text-yellow",
+        _ => "text-red"
+    };
+}

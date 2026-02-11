@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>14</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CareerIntel.Core\CareerIntel.Core.csproj" />
+    <ProjectReference Include="..\CareerIntel.Analysis\CareerIntel.Analysis.csproj" />
+    <ProjectReference Include="..\CareerIntel.Intelligence\CareerIntel.Intelligence.csproj" />
+    <ProjectReference Include="..\CareerIntel.Matching\CareerIntel.Matching.csproj" />
+    <ProjectReference Include="..\CareerIntel.Persistence\CareerIntel.Persistence.csproj" />
+    <ProjectReference Include="..\CareerIntel.Resume\CareerIntel.Resume.csproj" />
+    <ProjectReference Include="..\CareerIntel.Scrapers\CareerIntel.Scrapers.csproj" />
+    <ProjectReference Include="..\CareerIntel.Notifications\CareerIntel.Notifications.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.2" />
+  </ItemGroup>
+
+</Project>

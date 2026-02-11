@@ -1,0 +1,379 @@
+@page "/monitor"
+@inject DataDirectoryConfig DataDir
+@inject VacancyRepository VacancyRepo
+@implements IDisposable
+
+<div class="page-header">
+    <h1 class="page-title">Watch Panel</h1>
+    <p class="page-subtitle">Monitor job platforms for new vacancies in real time</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading watch configuration..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Last Scan" Value="@FormatTime(_lastScanTime)"
+                  Sub="@(_isWatching ? "Watch active" : "Watch stopped")"
+                  CssClass="@(_isWatching ? "text-green" : "")" />
+        <StatCard Label="Next Scan" Value="@FormatTime(_nextScanTime)"
+                  Sub="@($"Every {_intervalMinutes} min")" CssClass="text-cyan" />
+        <StatCard Label="Vacancies Watched" Value="@_totalWatched.ToString("N0")"
+                  Sub="Total tracked" />
+        <StatCard Label="Alerts Triggered" Value="@_alerts.Count.ToString("N0")"
+                  Sub="Matching rules" CssClass="text-yellow" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Watch Control</h2>
+        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            @if (_isWatching)
+            {
+                <button class="btn" @onclick="StopWatch">Stop Watch</button>
+            }
+            else
+            {
+                <button class="btn btn-primary" @onclick="StartWatch">Start Watch</button>
+            }
+            <span class="badge badge-@(_isWatching ? "green" : "gray")">
+                @(_isWatching ? "Running" : "Stopped")
+            </span>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Configuration</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Interval (minutes)</label>
+                <input type="number" min="1" max="1440" @bind="_intervalMinutes" />
+            </div>
+            <div class="form-group">
+                <label>Min Match Score</label>
+                <input type="number" min="0" max="100" @bind="_minMatchScore" />
+            </div>
+            <div class="form-group">
+                <label>Max Pages per Platform</label>
+                <input type="number" min="1" max="50" @bind="_maxPagesPerPlatform" />
+            </div>
+        </div>
+        <button class="btn btn-primary" style="margin-top: 1rem;" @onclick="SaveConfiguration">
+            Save Configuration
+        </button>
+        @if (_configSaved)
+        {
+            <span class="badge badge-green" style="margin-left: 0.75rem;">Saved</span>
+        }
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Watch Rules</h2>
+        @if (_watchRules.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Keywords</th>
+                        <th>Min Salary</th>
+                        <th>Remote Only</th>
+                        <th>Platforms</th>
+                        <th>Enabled</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rule in _watchRules)
+                    {
+                        <tr>
+                            <td>@rule.Keywords</td>
+                            <td>@(rule.MinSalary > 0 ? $"${rule.MinSalary:N0}" : "Any")</td>
+                            <td>
+                                <span class="badge badge-@(rule.RemoteOnly ? "green" : "gray")">
+                                    @(rule.RemoteOnly ? "Yes" : "No")
+                                </span>
+                            </td>
+                            <td>@(string.IsNullOrEmpty(rule.Platforms) ? "All" : rule.Platforms)</td>
+                            <td>
+                                <span class="badge badge-@(rule.Enabled ? "green" : "red")">
+                                    @(rule.Enabled ? "Active" : "Disabled")
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No watch rules configured. Using default scan settings.</p>
+        }
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Recent Alerts</h2>
+        @if (_alerts.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Vacancy Title</th>
+                        <th>Company</th>
+                        <th>Match Score</th>
+                        <th>Platform</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var alert in _alerts)
+                    {
+                        <tr>
+                            <td class="text-muted">@alert.Time.ToString("MMM dd HH:mm")</td>
+                            <td>@alert.Title</td>
+                            <td>@alert.Company</td>
+                            <td>
+                                <span class="badge badge-@GetScoreBadgeColor(alert.MatchScore)">
+                                    @alert.MatchScore%
+                                </span>
+                            </td>
+                            <td><span class="badge">@alert.Platform</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No alerts yet. Start watching to receive alerts when matching vacancies are found.</p>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _isWatching;
+    private bool _configSaved;
+    private DateTime? _lastScanTime;
+    private DateTime? _nextScanTime;
+    private int _totalWatched;
+    private int _intervalMinutes = 30;
+    private int _minMatchScore = 50;
+    private int _maxPagesPerPlatform = 3;
+    private List<WatchRule> _watchRules = [];
+    private List<WatchAlert> _alerts = [];
+    private CancellationTokenSource? _watchCts;
+    private System.Threading.Timer? _watchTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfiguration();
+        await LoadWatchRules();
+        await LoadAlerts();
+
+        var vacancies = await VacancyRepo.GetVacanciesAsync();
+        _totalWatched = vacancies.Count;
+
+        _loading = false;
+    }
+
+    private async Task LoadConfiguration()
+    {
+        var configPath = Path.Combine(DataDir.Path, "watch-config.json");
+        if (!File.Exists(configPath))
+            return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(configPath);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("intervalMinutes", out var interval))
+                _intervalMinutes = interval.GetInt32();
+            if (root.TryGetProperty("minMatchScore", out var score))
+                _minMatchScore = score.GetInt32();
+            if (root.TryGetProperty("maxPagesPerPlatform", out var pages))
+                _maxPagesPerPlatform = pages.GetInt32();
+            if (root.TryGetProperty("lastScanTime", out var lastScan) &&
+                lastScan.ValueKind == JsonValueKind.String)
+                _lastScanTime = DateTime.Parse(lastScan.GetString()!);
+        }
+        catch
+        {
+            // Use defaults on parse failure
+        }
+    }
+
+    private async Task LoadWatchRules()
+    {
+        var rulesPath = Path.Combine(DataDir.Path, "watch-rules.example.json");
+        if (!File.Exists(rulesPath))
+        {
+            _watchRules =
+            [
+                new() { Keywords = ".NET C#", MinSalary = 0, RemoteOnly = true, Platforms = "All", Enabled = true },
+                new() { Keywords = "Senior Backend", MinSalary = 80000, RemoteOnly = true, Platforms = "All", Enabled = true },
+                new() { Keywords = "Blazor ASP.NET", MinSalary = 0, RemoteOnly = false, Platforms = "All", Enabled = false }
+            ];
+            return;
+        }
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(rulesPath);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return;
+
+            _watchRules = [];
+            foreach (var elem in doc.RootElement.EnumerateArray())
+            {
+                _watchRules.Add(new WatchRule
+                {
+                    Keywords = elem.TryGetProperty("keywords", out var kw) ? kw.GetString() ?? "" : "",
+                    MinSalary = elem.TryGetProperty("minSalary", out var ms) ? ms.GetInt32() : 0,
+                    RemoteOnly = elem.TryGetProperty("remoteOnly", out var ro) && ro.GetBoolean(),
+                    Platforms = elem.TryGetProperty("platforms", out var pl) ? pl.GetString() ?? "All" : "All",
+                    Enabled = !elem.TryGetProperty("enabled", out var en) || en.GetBoolean()
+                });
+            }
+        }
+        catch
+        {
+            // Use defaults on parse failure
+        }
+    }
+
+    private async Task LoadAlerts()
+    {
+        var alertsPath = Path.Combine(DataDir.Path, "watch-alerts.json");
+        if (!File.Exists(alertsPath))
+            return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(alertsPath);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return;
+
+            _alerts = [];
+            foreach (var elem in doc.RootElement.EnumerateArray())
+            {
+                _alerts.Add(new WatchAlert
+                {
+                    Time = elem.TryGetProperty("time", out var t) && t.ValueKind == JsonValueKind.String
+                        ? DateTime.Parse(t.GetString()!) : DateTime.MinValue,
+                    Title = elem.TryGetProperty("title", out var ti) ? ti.GetString() ?? "" : "",
+                    Company = elem.TryGetProperty("company", out var c) ? c.GetString() ?? "" : "",
+                    MatchScore = elem.TryGetProperty("matchScore", out var ms) ? ms.GetInt32() : 0,
+                    Platform = elem.TryGetProperty("platform", out var pl) ? pl.GetString() ?? "" : ""
+                });
+            }
+
+            _alerts = _alerts.OrderByDescending(a => a.Time).Take(50).ToList();
+        }
+        catch
+        {
+            // Silently handle malformed JSON
+        }
+    }
+
+    private void StartWatch()
+    {
+        _isWatching = true;
+        _watchCts = new CancellationTokenSource();
+        _lastScanTime = DateTime.Now;
+        _nextScanTime = DateTime.Now.AddMinutes(_intervalMinutes);
+
+        _watchTimer = new System.Threading.Timer(
+            async _ => await OnWatchTick(),
+            null,
+            TimeSpan.FromMinutes(_intervalMinutes),
+            TimeSpan.FromMinutes(_intervalMinutes));
+    }
+
+    private void StopWatch()
+    {
+        _isWatching = false;
+        _watchCts?.Cancel();
+        _watchCts?.Dispose();
+        _watchCts = null;
+        _watchTimer?.Dispose();
+        _watchTimer = null;
+        _nextScanTime = null;
+    }
+
+    private async Task OnWatchTick()
+    {
+        _lastScanTime = DateTime.Now;
+        _nextScanTime = DateTime.Now.AddMinutes(_intervalMinutes);
+
+        try
+        {
+            var vacancies = await VacancyRepo.GetVacanciesAsync();
+            _totalWatched = vacancies.Count;
+        }
+        catch
+        {
+            // Timer tick failure is non-fatal
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SaveConfiguration()
+    {
+        var config = new
+        {
+            intervalMinutes = _intervalMinutes,
+            minMatchScore = _minMatchScore,
+            maxPagesPerPlatform = _maxPagesPerPlatform,
+            lastScanTime = _lastScanTime?.ToString("o")
+        };
+
+        var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(Path.Combine(DataDir.Path, "watch-config.json"), json);
+
+        _configSaved = true;
+        _ = Task.Delay(2000).ContinueWith(_ =>
+        {
+            _configSaved = false;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private static string FormatTime(DateTime? time) =>
+        time.HasValue ? time.Value.ToString("HH:mm:ss") : "--:--:--";
+
+    private static string GetScoreBadgeColor(int score) => score switch
+    {
+        >= 80 => "green",
+        >= 60 => "cyan",
+        >= 40 => "yellow",
+        _ => "gray"
+    };
+
+    public void Dispose()
+    {
+        _watchCts?.Cancel();
+        _watchCts?.Dispose();
+        _watchTimer?.Dispose();
+    }
+
+    private sealed class WatchRule
+    {
+        public string Keywords { get; set; } = "";
+        public int MinSalary { get; set; }
+        public bool RemoteOnly { get; set; }
+        public string Platforms { get; set; } = "All";
+        public bool Enabled { get; set; } = true;
+    }
+
+    private sealed class WatchAlert
+    {
+        public DateTime Time { get; set; }
+        public string Title { get; set; } = "";
+        public string Company { get; set; } = "";
+        public int MatchScore { get; set; }
+        public string Platform { get; set; } = "";
+    }
+}

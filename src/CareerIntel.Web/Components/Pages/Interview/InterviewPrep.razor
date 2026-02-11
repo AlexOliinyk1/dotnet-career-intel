@@ -1,0 +1,191 @@
+@page "/interview/prep"
+
+<div class="page-header">
+    <h1 class="page-title">Interview Prep</h1>
+    <p class="page-subtitle">Build a study plan from the topic bank and prepare for your next interview</p>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+    <div class="form-row">
+        <div class="form-group">
+            <label>Company Name</label>
+            <input type="text" @bind="_companyName" placeholder="e.g. Microsoft" />
+        </div>
+        <div class="form-group">
+            <label>Role</label>
+            <input type="text" @bind="_role" placeholder="e.g. Senior .NET Developer" />
+        </div>
+        <div class="form-group">
+            <label>Round Type</label>
+            <select @bind="_roundType">
+                <option value="Technical">Technical</option>
+                <option value="SystemDesign">System Design</option>
+                <option value="Behavioral">Behavioral</option>
+                <option value="All">All Rounds</option>
+            </select>
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+            <button class="btn btn-primary" @onclick="GeneratePlan">Generate Plan</button>
+        </div>
+    </div>
+</div>
+
+@if (_planGenerated)
+{
+    <div class="card-grid" style="margin-bottom: 1rem;">
+        <StatCard Label="Total Topics" Value="@_filteredTopics.Count.ToString()" />
+        <StatCard Label="Total Questions" Value="@_filteredTopics.Sum(t => t.Questions.Count).ToString()" />
+        <StatCard Label="Key Concepts" Value="@_filteredTopics.Sum(t => t.KeyConcepts.Count).ToString()" />
+        <StatCard Label="Resources" Value="@_filteredTopics.Sum(t => t.Resources.Count).ToString()" />
+    </div>
+}
+
+@foreach (var topic in _filteredTopics)
+{
+    <div class="card" style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 class="section-title" style="margin-bottom: 0;">@topic.Name</h2>
+            <span class="badge">@topic.Questions.Count questions</span>
+        </div>
+        <p class="text-muted" style="margin-top: 0.25rem;">@topic.Description</p>
+
+        @if (topic.KeyConcepts.Count > 0)
+        {
+            <div style="margin-bottom: 0.75rem;">
+                <strong>Key Concepts:</strong>
+                @foreach (var concept in topic.KeyConcepts)
+                {
+                    <span class="badge" style="margin: 0.125rem;">@concept</span>
+                }
+            </div>
+        }
+
+        @if (_expandedTopics.Contains(topic.Id))
+        {
+            <table class="data-table" style="margin-bottom: 0.75rem;">
+                <thead>
+                    <tr>
+                        <th>Question</th>
+                        <th>Difficulty</th>
+                        <th>Tags</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var q in topic.Questions)
+                    {
+                        <tr @onclick="() => ToggleAnswer(topic.Id + q.Question)"
+                            style="cursor: pointer;">
+                            <td>
+                                @q.Question
+                                @if (_expandedAnswers.Contains(topic.Id + q.Question))
+                                {
+                                    <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-surface); border-radius: 4px;">
+                                        <strong>Expected Answer:</strong>
+                                        <p style="margin: 0.25rem 0 0 0; white-space: pre-wrap;">@q.ExpectedAnswer</p>
+                                    </div>
+                                }
+                            </td>
+                            <td>
+                                <StatusBadge Text="@q.Difficulty"
+                                             Color="@GetDifficultyColor(q.Difficulty)" />
+                            </td>
+                            <td class="truncate" style="max-width: 180px;">
+                                @string.Join(", ", q.Tags)
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (topic.Resources.Count > 0 && _expandedTopics.Contains(topic.Id))
+        {
+            <div style="margin-bottom: 0.5rem;">
+                <strong>Resources:</strong>
+                <ul style="margin: 0.25rem 0; padding-left: 1.25rem;">
+                    @foreach (var r in topic.Resources)
+                    {
+                        <li>
+                            <a href="@r.Url" target="_blank" rel="noopener">@r.Title</a>
+                            <span class="badge" style="margin-left: 0.25rem;">@r.Type</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+
+        <button class="btn" @onclick="() => ToggleTopic(topic.Id)">
+            @(_expandedTopics.Contains(topic.Id) ? "Collapse" : "Expand Questions")
+        </button>
+    </div>
+}
+
+@if (_filteredTopics.Count == 0 && _planGenerated)
+{
+    <div class="card">
+        <p class="text-muted">No topics match the selected round type. Try selecting "All Rounds".</p>
+    </div>
+}
+
+@code {
+    private string _companyName = "";
+    private string _role = "";
+    private string _roundType = "All";
+    private bool _planGenerated;
+
+    private List<TopicArea> _allTopics = [];
+    private List<TopicArea> _filteredTopics = [];
+    private HashSet<string> _expandedTopics = [];
+    private HashSet<string> _expandedAnswers = [];
+
+    protected override void OnInitialized()
+    {
+        _allTopics = InterviewTopicBank.GetAllTopics().ToList();
+        _filteredTopics = _allTopics;
+        _planGenerated = true;
+    }
+
+    private void GeneratePlan()
+    {
+        _filteredTopics = _roundType switch
+        {
+            "Technical" => _allTopics
+                .Where(t => !t.Id.Equals("behavioral", StringComparison.OrdinalIgnoreCase) &&
+                            !t.Id.Contains("design", StringComparison.OrdinalIgnoreCase))
+                .ToList(),
+            "SystemDesign" => _allTopics
+                .Where(t => t.Id.Contains("design", StringComparison.OrdinalIgnoreCase) ||
+                            t.Id.Contains("architecture", StringComparison.OrdinalIgnoreCase) ||
+                            t.Id.Contains("cloud", StringComparison.OrdinalIgnoreCase))
+                .ToList(),
+            "Behavioral" => _allTopics
+                .Where(t => t.Id.Equals("behavioral", StringComparison.OrdinalIgnoreCase))
+                .ToList(),
+            _ => _allTopics
+        };
+
+        _expandedTopics.Clear();
+        _expandedAnswers.Clear();
+        _planGenerated = true;
+    }
+
+    private void ToggleTopic(string topicId)
+    {
+        if (!_expandedTopics.Remove(topicId))
+            _expandedTopics.Add(topicId);
+    }
+
+    private void ToggleAnswer(string key)
+    {
+        if (!_expandedAnswers.Remove(key))
+            _expandedAnswers.Add(key);
+    }
+
+    private static string GetDifficultyColor(string difficulty) => difficulty.ToLowerInvariant() switch
+    {
+        "junior" => "green",
+        "mid" => "yellow",
+        "senior" => "red",
+        _ => "gray"
+    };
+}

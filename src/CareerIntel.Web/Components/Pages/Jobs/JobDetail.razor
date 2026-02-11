@@ -1,0 +1,252 @@
+@page "/jobs/{Id}"
+@inject VacancyRepository VacancyRepo
+
+<LoadingSpinner Loading="@_loading" Message="Loading vacancy details..." />
+
+@if (!_loading && _vacancy is null)
+{
+    <div class="card">
+        <h2 class="card-title text-red">Vacancy Not Found</h2>
+        <p class="text-muted">The requested vacancy could not be found.</p>
+        <a href="/jobs" class="btn">Back to Job Browser</a>
+    </div>
+}
+else if (!_loading && _vacancy is not null)
+{
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <a href="/jobs" class="btn" style="margin-right: 0.5rem;">Back</a>
+            <h1 class="page-title" style="margin: 0;">@_vacancy.Title</h1>
+        </div>
+        <p class="page-subtitle">
+            @_vacancy.Company
+            @if (!string.IsNullOrEmpty(_vacancy.City) || !string.IsNullOrEmpty(_vacancy.Country))
+            {
+                <span class="text-muted">
+                    &mdash; @(string.Join(", ", new[] { _vacancy.City, _vacancy.Country }.Where(s => !string.IsNullOrEmpty(s))))
+                </span>
+            }
+        </p>
+    </div>
+
+    <div class="card" style="margin-bottom: 1rem;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <StatusBadge Text="@_vacancy.RemotePolicy.ToString()"
+                         Color="@StatusBadge.GetColorForStatus(_vacancy.RemotePolicy.ToString())" />
+            <StatusBadge Text="@_vacancy.SeniorityLevel.ToString()"
+                         Color="@GetSeniorityColor(_vacancy.SeniorityLevel)" />
+            <span class="badge">@_vacancy.SourcePlatform</span>
+            @if (_vacancy.EngagementType != EngagementType.Unknown)
+            {
+                <span class="badge">@_vacancy.EngagementType</span>
+            }
+        </div>
+
+        @if (_vacancy.SalaryMin.HasValue)
+        {
+            <div style="margin-bottom: 1rem;">
+                <h3 class="section-title">Salary</h3>
+                <span class="text-cyan" style="font-size: 1.25rem; font-weight: 600;">
+                    @FormatSalaryRange(_vacancy)
+                </span>
+            </div>
+        }
+
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+            <span class="text-muted">Posted: @_vacancy.PostedDate.ToString("MMMM dd, yyyy")</span>
+            <span class="text-muted">Scraped: @_vacancy.ScrapedDate.ToString("MMMM dd, yyyy")</span>
+            @if (_vacancy.ExpiresAt.HasValue)
+            {
+                <span class="text-muted">Expires: @_vacancy.ExpiresAt.Value.ToString("MMMM dd, yyyy")</span>
+            }
+        </div>
+    </div>
+
+    @if (_vacancy.RequiredSkills.Count > 0 || _vacancy.PreferredSkills.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <h3 class="section-title">Skills</h3>
+
+            @if (_vacancy.RequiredSkills.Count > 0)
+            {
+                <div style="margin-bottom: 0.75rem;">
+                    <strong>Required</strong>
+                    <div style="display: flex; gap: 0.375rem; flex-wrap: wrap; margin-top: 0.375rem;">
+                        @foreach (var skill in _vacancy.RequiredSkills)
+                        {
+                            <StatusBadge Text="@skill" Color="cyan" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_vacancy.PreferredSkills.Count > 0)
+            {
+                <div>
+                    <strong>Preferred</strong>
+                    <div style="display: flex; gap: 0.375rem; flex-wrap: wrap; margin-top: 0.375rem;">
+                        @foreach (var skill in _vacancy.PreferredSkills)
+                        {
+                            <StatusBadge Text="@skill" Color="gray" />
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_vacancy.GeoRestrictions.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <h3 class="section-title">Geographic Restrictions</h3>
+            <div style="display: flex; gap: 0.375rem; flex-wrap: wrap;">
+                @foreach (var restriction in _vacancy.GeoRestrictions)
+                {
+                    <StatusBadge Text="@restriction" Color="yellow" />
+                }
+            </div>
+        </div>
+    }
+
+    @if (_vacancy.Breakdown is not null && _vacancy.Breakdown.HasStructuredData)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <h3 class="card-title">Description Breakdown</h3>
+
+            @if (!string.IsNullOrEmpty(_vacancy.Breakdown.AboutCompany))
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 class="section-title">About the Company</h4>
+                    <p>@_vacancy.Breakdown.AboutCompany</p>
+                </div>
+            }
+
+            @if (_vacancy.Breakdown.Responsibilities.Count > 0)
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 class="section-title">Responsibilities</h4>
+                    <ul>
+                        @foreach (var item in _vacancy.Breakdown.Responsibilities)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (_vacancy.Breakdown.Requirements.Count > 0)
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 class="section-title">Requirements</h4>
+                    <ul>
+                        @foreach (var item in _vacancy.Breakdown.Requirements)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (_vacancy.Breakdown.NiceToHave.Count > 0)
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 class="section-title">Nice to Have</h4>
+                    <ul>
+                        @foreach (var item in _vacancy.Breakdown.NiceToHave)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (_vacancy.Breakdown.Benefits.Count > 0)
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 class="section-title">Benefits</h4>
+                    <ul>
+                        @foreach (var item in _vacancy.Breakdown.Benefits)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (_vacancy.Breakdown.TechStack.Count > 0)
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 class="section-title">Tech Stack</h4>
+                    <div style="display: flex; gap: 0.375rem; flex-wrap: wrap;">
+                        @foreach (var tech in _vacancy.Breakdown.TechStack)
+                        {
+                            <StatusBadge Text="@tech" Color="blue" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_vacancy.Breakdown.InterviewProcess))
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 class="section-title">Interview Process</h4>
+                    <p>@_vacancy.Breakdown.InterviewProcess</p>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="card" style="margin-bottom: 1rem;">
+        <h3 class="card-title">Full Description</h3>
+        <div style="white-space: pre-wrap; line-height: 1.6;">@_vacancy.Description</div>
+    </div>
+
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 2rem;">
+        @if (!string.IsNullOrEmpty(_vacancy.Url))
+        {
+            <a href="@_vacancy.Url" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+                Apply Externally
+            </a>
+        }
+        <a href="/applications/decisions" class="btn">Decide</a>
+        <a href="/jobs" class="btn">Back to Job Browser</a>
+    </div>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private bool _loading = true;
+    private JobVacancy? _vacancy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var allVacancies = await VacancyRepo.GetVacanciesAsync();
+        _vacancy = allVacancies.FirstOrDefault(v => v.Id == Id);
+        _loading = false;
+    }
+
+    private static string FormatSalaryRange(JobVacancy v)
+    {
+        if (!v.SalaryMin.HasValue) return "Not specified";
+
+        var currency = v.SalaryCurrency;
+        var min = v.SalaryMin.Value.ToString("N0");
+
+        if (v.SalaryMax.HasValue)
+            return $"{currency} {min} - {v.SalaryMax.Value:N0}";
+
+        return $"{currency} {min}+";
+    }
+
+    private static string GetSeniorityColor(SeniorityLevel level) => level switch
+    {
+        SeniorityLevel.Principal or SeniorityLevel.Architect => "red",
+        SeniorityLevel.Lead => "orange",
+        SeniorityLevel.Senior => "cyan",
+        SeniorityLevel.Middle => "blue",
+        SeniorityLevel.Junior => "green",
+        SeniorityLevel.Intern => "gray",
+        _ => "gray"
+    };
+}

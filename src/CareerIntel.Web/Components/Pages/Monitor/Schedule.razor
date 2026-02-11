@@ -1,0 +1,276 @@
+@page "/monitor/schedule"
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Interview Schedule</h1>
+    <p class="page-subtitle">Track and manage upcoming interview appointments</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading interview schedule..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Total Interviews" Value="@_interviews.Count.ToString()"
+                  Sub="All scheduled" />
+        <StatCard Label="Upcoming" Value="@_upcomingCount.ToString()"
+                  Sub="In the future" CssClass="text-cyan" />
+        <StatCard Label="Today" Value="@_todayCount.ToString()"
+                  Sub="@DateTime.Now.ToString("MMM dd")" CssClass="text-yellow" />
+        <StatCard Label="Completed" Value="@_pastCount.ToString()"
+                  Sub="Past interviews" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Add Interview</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Company</label>
+                <input type="text" @bind="_newCompany" placeholder="Company name" />
+            </div>
+            <div class="form-group">
+                <label>Date</label>
+                <input type="date" @bind="_newDate" />
+            </div>
+            <div class="form-group">
+                <label>Time</label>
+                <input type="time" @bind="_newTime" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Round</label>
+                <select @bind="_newRound">
+                    <option value="Screening">Screening</option>
+                    <option value="Technical">Technical</option>
+                    <option value="System Design">System Design</option>
+                    <option value="Behavioral">Behavioral</option>
+                    <option value="Live Coding">Live Coding</option>
+                    <option value="Take-Home">Take-Home</option>
+                    <option value="Culture Fit">Culture Fit</option>
+                    <option value="Final">Final</option>
+                    <option value="Offer Discussion">Offer Discussion</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input type="text" @bind="_newNotes" placeholder="Optional notes" />
+            </div>
+        </div>
+        <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 1rem;">
+            <button class="btn btn-primary" @onclick="AddInterview"
+                    disabled="@string.IsNullOrWhiteSpace(_newCompany)">
+                Add Interview
+            </button>
+            @if (_addedMessage is not null)
+            {
+                <span class="badge badge-green">@_addedMessage</span>
+            }
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Schedule</h2>
+        @if (_interviews.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Company</th>
+                        <th>Round</th>
+                        <th>Notes</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var interview in _interviews.OrderBy(i => i.Date).ThenBy(i => i.Time))
+                    {
+                        var dateStatus = GetDateStatus(interview.Date);
+                        <tr style="@GetRowStyle(dateStatus)">
+                            <td>
+                                <span class="badge badge-@GetStatusColor(dateStatus)">
+                                    @dateStatus
+                                </span>
+                            </td>
+                            <td>@interview.Date.ToString("MMM dd, yyyy")</td>
+                            <td>@interview.Time.ToString("HH:mm")</td>
+                            <td><strong>@interview.Company</strong></td>
+                            <td><span class="badge">@interview.Round</span></td>
+                            <td class="text-muted">@interview.Notes</td>
+                            <td>
+                                <button class="btn" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                                        @onclick="() => RemoveInterview(interview)">
+                                    Remove
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No interviews scheduled. Add one above to get started.</p>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<ScheduledInterview> _interviews = [];
+    private string? _addedMessage;
+    private int _upcomingCount;
+    private int _todayCount;
+    private int _pastCount;
+
+    // Form fields
+    private string _newCompany = "";
+    private DateTime _newDate = DateTime.Today.AddDays(1);
+    private TimeOnly _newTime = new(10, 0);
+    private string _newRound = "Screening";
+    private string _newNotes = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSchedule();
+        RecalculateCounts();
+        _loading = false;
+    }
+
+    private async Task LoadSchedule()
+    {
+        var path = Path.Combine(DataDir.Path, "interview-schedule.json");
+        if (!File.Exists(path))
+            return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return;
+
+            _interviews = [];
+            foreach (var elem in doc.RootElement.EnumerateArray())
+            {
+                var interview = new ScheduledInterview();
+
+                if (elem.TryGetProperty("company", out var company))
+                    interview.Company = company.GetString() ?? "";
+                if (elem.TryGetProperty("date", out var date) && date.ValueKind == JsonValueKind.String)
+                    interview.Date = DateTime.Parse(date.GetString()!);
+                if (elem.TryGetProperty("time", out var time) && time.ValueKind == JsonValueKind.String)
+                    interview.Time = TimeOnly.Parse(time.GetString()!);
+                if (elem.TryGetProperty("round", out var round))
+                    interview.Round = round.GetString() ?? "Screening";
+                if (elem.TryGetProperty("notes", out var notes))
+                    interview.Notes = notes.GetString() ?? "";
+
+                _interviews.Add(interview);
+            }
+        }
+        catch
+        {
+            // Silently handle malformed JSON
+        }
+    }
+
+    private async Task SaveSchedule()
+    {
+        var path = Path.Combine(DataDir.Path, "interview-schedule.json");
+        var data = _interviews.Select(i => new
+        {
+            company = i.Company,
+            date = i.Date.ToString("yyyy-MM-dd"),
+            time = i.Time.ToString("HH:mm"),
+            round = i.Round,
+            notes = i.Notes
+        });
+
+        var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(path, json);
+    }
+
+    private async Task AddInterview()
+    {
+        if (string.IsNullOrWhiteSpace(_newCompany))
+            return;
+
+        _interviews.Add(new ScheduledInterview
+        {
+            Company = _newCompany.Trim(),
+            Date = _newDate,
+            Time = _newTime,
+            Round = _newRound,
+            Notes = _newNotes.Trim()
+        });
+
+        await SaveSchedule();
+        RecalculateCounts();
+
+        _addedMessage = $"Added: {_newCompany.Trim()}";
+        _newCompany = "";
+        _newNotes = "";
+        _newDate = DateTime.Today.AddDays(1);
+        _newTime = new TimeOnly(10, 0);
+        _newRound = "Screening";
+
+        _ = Task.Delay(3000).ContinueWith(_ =>
+        {
+            _addedMessage = null;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private async Task RemoveInterview(ScheduledInterview interview)
+    {
+        _interviews.Remove(interview);
+        await SaveSchedule();
+        RecalculateCounts();
+    }
+
+    private void RecalculateCounts()
+    {
+        var today = DateTime.Today;
+        _todayCount = _interviews.Count(i => i.Date.Date == today);
+        _upcomingCount = _interviews.Count(i => i.Date.Date > today);
+        _pastCount = _interviews.Count(i => i.Date.Date < today);
+    }
+
+    private static string GetDateStatus(DateTime date)
+    {
+        if (date.Date == DateTime.Today)
+            return "Today";
+        if (date.Date > DateTime.Today)
+            return "Upcoming";
+        return "Past";
+    }
+
+    private static string GetStatusColor(string status) => status switch
+    {
+        "Today" => "yellow",
+        "Upcoming" => "blue",
+        "Past" => "gray",
+        _ => "gray"
+    };
+
+    private static string GetRowStyle(string status) => status switch
+    {
+        "Today" => "border-left: 3px solid var(--color-yellow, #f0c040);",
+        "Upcoming" => "border-left: 3px solid var(--color-blue, #4090f0);",
+        "Past" => "opacity: 0.6;",
+        _ => ""
+    };
+
+    private sealed class ScheduledInterview
+    {
+        public string Company { get; set; } = "";
+        public DateTime Date { get; set; } = DateTime.Today;
+        public TimeOnly Time { get; set; } = new(10, 0);
+        public string Round { get; set; } = "Screening";
+        public string Notes { get; set; } = "";
+    }
+}

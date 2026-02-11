@@ -1,0 +1,182 @@
+@page "/learning/resources"
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Learning Resources</h1>
+    <p class="page-subtitle">Interview topics, practice questions, and curated .NET learning materials</p>
+</div>
+
+<div class="card-grid">
+    <StatCard Label="Topic Areas" Value="@_topics.Count.ToString()"
+              Sub="comprehensive coverage" />
+    <StatCard Label="Total Questions" Value="@_totalQuestions.ToString("N0")"
+              Sub="across all topics" CssClass="text-cyan" />
+    <StatCard Label="Difficulty Levels" Value="3"
+              Sub="Junior, Mid, Senior" CssClass="text-green" />
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+    <h2 class="card-title">Interview Topic Bank</h2>
+    <p class="text-muted">Click a topic to expand and view questions</p>
+</div>
+
+@foreach (var topic in _topics)
+{
+    var isExpanded = _expandedTopics.Contains(topic.Id);
+
+    <div class="card" style="margin-top: 0.75rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;"
+             @onclick="() => ToggleTopic(topic.Id)">
+            <div>
+                <h3 class="section-title" style="margin: 0;">@topic.Name</h3>
+                <p class="text-muted" style="margin: 0.25rem 0 0 0;">@Truncate(topic.Description, 120)</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-shrink: 0;">
+                <span class="badge">@topic.Questions.Count questions</span>
+                @{
+                    var difficulties = topic.Questions.GroupBy(q => q.Difficulty).OrderBy(g => g.Key);
+                }
+                @foreach (var diff in difficulties)
+                {
+                    <StatusBadge Text="@($"{diff.Key}: {diff.Count()}")"
+                                 Color="@GetDifficultyColor(diff.Key)" />
+                }
+                <span style="font-size: 1.2rem; margin-left: 0.5rem;">@(isExpanded ? "^" : "v")</span>
+            </div>
+        </div>
+
+        @if (isExpanded)
+        {
+            @if (topic.KeyConcepts.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h4 class="section-title">Key Concepts</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var concept in topic.KeyConcepts)
+                        {
+                            <span class="badge">@concept</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            <div style="margin-top: 1rem;">
+                <h4 class="section-title">Questions</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60%;">Question</th>
+                            <th>Difficulty</th>
+                            <th>Tags</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in topic.Questions)
+                        {
+                            <tr>
+                                <td>@q.Question</td>
+                                <td>
+                                    <StatusBadge Text="@q.Difficulty"
+                                                 Color="@GetDifficultyColor(q.Difficulty)" />
+                                </td>
+                                <td>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                        @foreach (var tag in q.Tags.Take(4))
+                                        {
+                                            <span class="badge">@tag</span>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (topic.Resources.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h4 class="section-title">Resources</h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        @foreach (var resource in topic.Resources)
+                        {
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span class="badge">@resource.Type</span>
+                                <a href="@resource.Url" target="_blank" rel="noopener noreferrer">@resource.Title</a>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+}
+
+<div class="card" style="margin-top: 1.5rem;">
+    <h2 class="card-title">.NET Learning Resources</h2>
+    <div class="card-grid">
+        <div class="stat-card">
+            <h3 class="section-title">Official Documentation</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <a href="https://learn.microsoft.com/en-us/dotnet/" target="_blank" rel="noopener noreferrer">Microsoft .NET Documentation</a>
+                <a href="https://learn.microsoft.com/en-us/aspnet/core/" target="_blank" rel="noopener noreferrer">ASP.NET Core Documentation</a>
+                <a href="https://learn.microsoft.com/en-us/ef/core/" target="_blank" rel="noopener noreferrer">Entity Framework Core</a>
+                <a href="https://learn.microsoft.com/en-us/azure/" target="_blank" rel="noopener noreferrer">Azure Documentation</a>
+            </div>
+        </div>
+        <div class="stat-card">
+            <h3 class="section-title">Practice Platforms</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <a href="https://leetcode.com/" target="_blank" rel="noopener noreferrer">LeetCode - Algorithm Practice</a>
+                <a href="https://exercism.org/tracks/csharp" target="_blank" rel="noopener noreferrer">Exercism - C# Track</a>
+                <a href="https://www.hackerrank.com/domains/tutorials/10-days-of-csharp" target="_blank" rel="noopener noreferrer">HackerRank - C# Challenges</a>
+                <a href="https://github.com/donnemartin/system-design-primer" target="_blank" rel="noopener noreferrer">System Design Primer</a>
+            </div>
+        </div>
+        <div class="stat-card">
+            <h3 class="section-title">Architecture & Patterns</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <a href="https://www.youtube.com/@@dotnet" target="_blank" rel="noopener noreferrer">.NET YouTube Channel</a>
+                <a href="https://devblogs.microsoft.com/dotnet/" target="_blank" rel="noopener noreferrer">.NET Blog</a>
+                <a href="https://github.com/dotnet/aspnetcore" target="_blank" rel="noopener noreferrer">ASP.NET Core Source Code</a>
+                <a href="https://refactoring.guru/design-patterns" target="_blank" rel="noopener noreferrer">Refactoring Guru - Design Patterns</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+    <a href="/learning" class="btn btn-primary">Skills Gap Analysis</a>
+    <a href="/learning/adaptive" class="btn">Adaptive Plan</a>
+</div>
+
+@code {
+    private IReadOnlyList<TopicArea> _topics = [];
+    private int _totalQuestions;
+    private HashSet<string> _expandedTopics = [];
+
+    protected override void OnInitialized()
+    {
+        _topics = InterviewTopicBank.GetAllTopics();
+        _totalQuestions = _topics.Sum(t => t.Questions.Count);
+    }
+
+    private void ToggleTopic(string topicId)
+    {
+        if (!_expandedTopics.Remove(topicId))
+        {
+            _expandedTopics.Add(topicId);
+        }
+    }
+
+    private static string GetDifficultyColor(string difficulty) => difficulty.ToLowerInvariant() switch
+    {
+        "junior" => "green",
+        "mid" or "middle" or "intermediate" => "yellow",
+        "senior" or "advanced" or "expert" => "red",
+        _ => "gray"
+    };
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength] + "...";
+}

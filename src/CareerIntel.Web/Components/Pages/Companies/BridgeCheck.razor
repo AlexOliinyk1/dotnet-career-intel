@@ -1,0 +1,143 @@
+@page "/companies/bridge-check"
+@inject DataDirectoryConfig DataDir
+@inject VacancyRepository VacancyRepo
+@inject ILogger<BridgeCheck> Logger
+
+<div class="page-header">
+    <h1 class="page-title">Bridge Check</h1>
+    <p class="page-subtitle">Detect intermediary companies and uncover the real end clients behind job postings</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing vacancies for intermediaries..." />
+
+@if (!_loading)
+{
+    <div class="card-grid" style="margin-bottom: 1rem;">
+        <StatCard Label="Total Analyzed" Value="@_totalAnalyzed.ToString()" />
+        <StatCard Label="Intermediary Found"
+                  Value="@_detections.Count.ToString()"
+                  CssClass="stat-warn" />
+        <StatCard Label="Clients Detected"
+                  Value="@_detections.Count(d => !string.IsNullOrEmpty(d.DetectedClientName)).ToString()"
+                  CssClass="stat-success" />
+        <StatCard Label="Known Intermediaries"
+                  Value="@_knownIntermediaryCount.ToString()" />
+    </div>
+
+    @if (_detections.Count > 0)
+    {
+        <div class="card">
+            <h2 class="section-title">Detection Results</h2>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Vacancy Title</th>
+                        <th>Company (Intermediary)</th>
+                        <th>Detected Client</th>
+                        <th>Confidence</th>
+                        <th>Method</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in _detections)
+                    {
+                        <tr>
+                            <td class="truncate" style="max-width: 260px;">
+                                @d.OriginalVacancy.Title
+                            </td>
+                            <td>
+                                <span style="color: var(--color-red); font-weight: 600;">
+                                    @d.OriginalVacancy.Company
+                                </span>
+                                @if (d.Intermediary is not null)
+                                {
+                                    <br />
+                                    <small class="text-muted">@d.Intermediary.Type | @d.Intermediary.Region</small>
+                                }
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(d.DetectedClientName))
+                                {
+                                    <strong class="text-cyan">@d.DetectedClientName</strong>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Not detected</span>
+                                }
+                            </td>
+                            <td>
+                                <StatusBadge Text="@($"{d.Confidence * 100:F0}%")"
+                                             Color="@(d.Confidence >= 0.8 ? "green" : d.Confidence >= 0.5 ? "yellow" : "gray")" />
+                            </td>
+                            <td>
+                                <span class="badge">@d.Method</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <p class="text-muted">No intermediary postings detected in recent vacancies. This is a good sign -- the jobs appear to be direct postings.</p>
+        </div>
+    }
+
+    @if (_intermediaries.Count > 0)
+    {
+        <div class="card" style="margin-top: 1rem;">
+            <h2 class="section-title">Known Intermediary Database</h2>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Region</th>
+                        <th>Est. Markup</th>
+                        <th>Aliases</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var i in _intermediaries)
+                    {
+                        <tr>
+                            <td><strong>@i.Name</strong></td>
+                            <td><span class="badge">@i.Type</span></td>
+                            <td>@i.Region</td>
+                            <td class="text-cyan">@($"{i.EstimatedMarkup * 100:F0}%")</td>
+                            <td class="truncate" style="max-width: 200px;">
+                                @(i.Aliases.Count > 0 ? string.Join(", ", i.Aliases) : "-")
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private int _totalAnalyzed;
+    private int _knownIntermediaryCount;
+    private List<EndClientDetection> _detections = [];
+    private List<IntermediaryCompany> _intermediaries = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var vacancies = await VacancyRepo.GetVacanciesAsync();
+        _totalAnalyzed = vacancies.Count;
+
+        var detector = new EndClientDetector(Logger, DataDir.Path);
+        _intermediaries = detector.KnownIntermediaries.ToList();
+        _knownIntermediaryCount = _intermediaries.Count;
+
+        _detections = detector.AnalyzeBatch(vacancies);
+
+        _loading = false;
+    }
+}

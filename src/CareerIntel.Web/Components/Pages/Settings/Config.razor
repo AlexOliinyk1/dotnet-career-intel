@@ -1,0 +1,343 @@
+@page "/settings"
+@inject DataDirectoryConfig DataDir
+@inject IEnumerable<CareerIntel.Core.Interfaces.IJobScraper> Scrapers
+
+<div class="page-header">
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">Application configuration and notification preferences</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading configuration..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Data Directory" Value="@ShortenPath(DataDir.Path)"
+                  Sub="Active data store" />
+        <StatCard Label="Database" Value="@_dbSizeDisplay"
+                  Sub="@_dbPath" />
+        <StatCard Label=".NET Version" Value="@_dotnetVersion"
+                  Sub="Runtime" CssClass="text-cyan" />
+        <StatCard Label="Scrapers" Value="@_scraperCount.ToString()"
+                  Sub="Registered platforms" CssClass="text-green" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">System Information</h2>
+        <table class="data-table">
+            <tbody>
+                <tr>
+                    <td><strong>Data Directory</strong></td>
+                    <td>@DataDir.Path</td>
+                </tr>
+                <tr>
+                    <td><strong>Database Path</strong></td>
+                    <td>@Path.Combine(DataDir.Path, "career-intel.db")</td>
+                </tr>
+                <tr>
+                    <td><strong>Database Size</strong></td>
+                    <td>@_dbSizeDisplay</td>
+                </tr>
+                <tr>
+                    <td><strong>.NET Version</strong></td>
+                    <td>@_dotnetVersion</td>
+                </tr>
+                <tr>
+                    <td><strong>Registered Scrapers</strong></td>
+                    <td>@_scraperCount</td>
+                </tr>
+                <tr>
+                    <td><strong>Scraper Platforms</strong></td>
+                    <td>@_scraperNames</td>
+                </tr>
+                <tr>
+                    <td><strong>CLI Commands</strong></td>
+                    <td>@_commandCount</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Telegram Notifications</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Enabled</label>
+                <select @bind="_telegramEnabled">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Bot Token</label>
+                <input type="password" @bind="_telegramBotToken" placeholder="123456:ABC-DEF..." />
+            </div>
+            <div class="form-group">
+                <label>Chat ID</label>
+                <input type="text" @bind="_telegramChatId" placeholder="e.g. -1001234567890" />
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Email Notifications</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Enabled</label>
+                <select @bind="_emailEnabled">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>SMTP Host</label>
+                <input type="text" @bind="_smtpHost" placeholder="smtp.gmail.com" />
+            </div>
+            <div class="form-group">
+                <label>SMTP Port</label>
+                <input type="number" @bind="_smtpPort" min="1" max="65535" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" @bind="_smtpUsername" placeholder="SMTP username" />
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" @bind="_smtpPassword" placeholder="SMTP password" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>From Address</label>
+                <input type="email" @bind="_emailFrom" placeholder="alerts@example.com" />
+            </div>
+            <div class="form-group">
+                <label>To Address</label>
+                <input type="email" @bind="_emailTo" placeholder="you@example.com" />
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Notification Thresholds</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Min Score to Notify</label>
+                <input type="number" min="0" max="100" @bind="_minScoreToNotify" />
+            </div>
+            <div class="form-group">
+                <label>Notify on High-Paying Roles</label>
+                <select @bind="_notifyHighPaying">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: center;">
+        <button class="btn btn-primary" @onclick="SaveConfig">Save Configuration</button>
+        @if (_saveMessage is not null)
+        {
+            <span class="badge badge-@(_saveSuccess ? "green" : "red")">@_saveMessage</span>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+
+    // System info
+    private string _dotnetVersion = "";
+    private string _dbPath = "";
+    private string _dbSizeDisplay = "";
+    private int _scraperCount;
+    private string _scraperNames = "";
+    private int _commandCount;
+
+    // Telegram
+    private string _telegramEnabled = "false";
+    private string _telegramBotToken = "";
+    private string _telegramChatId = "";
+
+    // Email
+    private string _emailEnabled = "false";
+    private string _smtpHost = "";
+    private int _smtpPort = 587;
+    private string _smtpUsername = "";
+    private string _smtpPassword = "";
+    private string _emailFrom = "";
+    private string _emailTo = "";
+
+    // Thresholds
+    private double _minScoreToNotify = 60;
+    private string _notifyHighPaying = "true";
+
+    // Save state
+    private string? _saveMessage;
+    private bool _saveSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        LoadSystemInfo();
+        await LoadNotificationConfig();
+        _loading = false;
+    }
+
+    private void LoadSystemInfo()
+    {
+        _dotnetVersion = Environment.Version.ToString();
+
+        _dbPath = Path.Combine(DataDir.Path, "career-intel.db");
+        if (File.Exists(_dbPath))
+        {
+            var size = new FileInfo(_dbPath).Length;
+            _dbSizeDisplay = FormatFileSize(size);
+        }
+        else
+        {
+            _dbSizeDisplay = "Not created";
+        }
+
+        var scraperList = Scrapers.ToList();
+        _scraperCount = scraperList.Count;
+        _scraperNames = string.Join(", ", scraperList.Select(s => s.PlatformName).OrderBy(n => n));
+
+        // Count CLI commands by scanning the Commands directory
+        _commandCount = CountCliCommands();
+    }
+
+    private int CountCliCommands()
+    {
+        // Walk up from Web project to find Cli project
+        var solutionDir = Path.GetFullPath(Path.Combine(DataDir.Path, ".."));
+        var commandsDir = Path.Combine(solutionDir, "src", "CareerIntel.Cli", "Commands");
+        if (!Directory.Exists(commandsDir))
+        {
+            // Try relative to the working directory
+            commandsDir = Path.Combine(Directory.GetCurrentDirectory(), "..", "CareerIntel.Cli", "Commands");
+        }
+
+        if (Directory.Exists(commandsDir))
+            return Directory.GetFiles(commandsDir, "*Command.cs").Length;
+
+        return 0;
+    }
+
+    private async Task LoadNotificationConfig()
+    {
+        var configPath = Path.Combine(DataDir.Path, "notification-config.json");
+        if (!File.Exists(configPath))
+            return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(configPath);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("minScoreToNotify", out var minScore))
+                _minScoreToNotify = minScore.GetDouble();
+            if (root.TryGetProperty("notifyOnNewHighPayingRoles", out var highPay))
+                _notifyHighPaying = highPay.GetBoolean() ? "true" : "false";
+
+            // Telegram
+            if (root.TryGetProperty("telegram", out var tg))
+            {
+                if (tg.TryGetProperty("botToken", out var bt))
+                    _telegramBotToken = bt.GetString() ?? "";
+                if (tg.TryGetProperty("chatId", out var ci))
+                    _telegramChatId = ci.GetString() ?? "";
+                if (tg.TryGetProperty("enabled", out var en))
+                    _telegramEnabled = en.GetBoolean() ? "true" : "false";
+            }
+
+            // Email
+            if (root.TryGetProperty("email", out var em))
+            {
+                if (em.TryGetProperty("smtpHost", out var host))
+                    _smtpHost = host.GetString() ?? "";
+                if (em.TryGetProperty("smtpPort", out var port))
+                    _smtpPort = port.GetInt32();
+                if (em.TryGetProperty("username", out var user))
+                    _smtpUsername = user.GetString() ?? "";
+                if (em.TryGetProperty("password", out var pass))
+                    _smtpPassword = pass.GetString() ?? "";
+                if (em.TryGetProperty("fromAddress", out var from))
+                    _emailFrom = from.GetString() ?? "";
+                if (em.TryGetProperty("toAddress", out var to))
+                    _emailTo = to.GetString() ?? "";
+                if (em.TryGetProperty("enabled", out var emen))
+                    _emailEnabled = emen.GetBoolean() ? "true" : "false";
+            }
+        }
+        catch
+        {
+            // Use defaults on parse failure
+        }
+    }
+
+    private async Task SaveConfig()
+    {
+        try
+        {
+            var config = new
+            {
+                telegram = new
+                {
+                    botToken = _telegramBotToken,
+                    chatId = _telegramChatId,
+                    enabled = _telegramEnabled == "true"
+                },
+                email = new
+                {
+                    smtpHost = _smtpHost,
+                    smtpPort = _smtpPort,
+                    username = _smtpUsername,
+                    password = _smtpPassword,
+                    fromAddress = _emailFrom,
+                    toAddress = _emailTo,
+                    enabled = _emailEnabled == "true"
+                },
+                minScoreToNotify = _minScoreToNotify,
+                notifyOnNewHighPayingRoles = _notifyHighPaying == "true"
+            };
+
+            var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(Path.Combine(DataDir.Path, "notification-config.json"), json);
+
+            _saveSuccess = true;
+            _saveMessage = "Configuration saved";
+        }
+        catch (Exception ex)
+        {
+            _saveSuccess = false;
+            _saveMessage = $"Error: {ex.Message}";
+        }
+
+        _ = Task.Delay(3000).ContinueWith(_ =>
+        {
+            _saveMessage = null;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private static string ShortenPath(string path)
+    {
+        if (path.Length <= 25)
+            return path;
+        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Length <= 2)
+            return path;
+        return $"...{Path.DirectorySeparatorChar}{parts[^2]}{Path.DirectorySeparatorChar}{parts[^1]}";
+    }
+
+    private static string FormatFileSize(long size)
+    {
+        if (size < 1024) return $"{size} B";
+        if (size < 1024 * 1024) return $"{size / 1024.0:F1} KB";
+        return $"{size / (1024.0 * 1024.0):F1} MB";
+    }
+}

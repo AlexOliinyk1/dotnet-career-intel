@@ -1,0 +1,55 @@
+<div class="nav-menu">
+    <NavSection Title="Overview">
+        <NavItem Href="" Icon="grid" Label="Dashboard" />
+    </NavSection>
+
+    <NavSection Title="Jobs">
+        <NavItem Href="jobs" Icon="briefcase" Label="Job Browser" />
+        <NavItem Href="jobs/tech-demand" Icon="bar-chart" Label="Tech Demand" />
+    </NavSection>
+
+    <NavSection Title="LinkedIn">
+        <NavItem Href="linkedin" Icon="message" Label="Proposals" />
+        <NavItem Href="linkedin/stats" Icon="trending" Label="Analytics" />
+    </NavSection>
+
+    <NavSection Title="Applications">
+        <NavItem Href="applications" Icon="layers" Label="Pipeline" />
+        <NavItem Href="applications/decisions" Icon="check" Label="Decisions" />
+        <NavItem Href="applications/strategy" Icon="target" Label="Strategy" />
+    </NavSection>
+
+    <NavSection Title="Companies">
+        <NavItem Href="companies" Icon="building" Label="Companies" />
+        <NavItem Href="companies/bridge-check" Icon="shield" Label="Bridge Check" />
+    </NavSection>
+
+    <NavSection Title="Interview">
+        <NavItem Href="interview/prep" Icon="clipboard" Label="Prep Plans" />
+        <NavItem Href="interview/mock" Icon="mic" Label="Mock Interview" />
+        <NavItem Href="interview/feedback" Icon="star" Label="Feedback" />
+        <NavItem Href="interview/questions" Icon="help" Label="Questions" />
+    </NavSection>
+
+    <NavSection Title="Learning">
+        <NavItem Href="learning" Icon="book" Label="Learn Plan" />
+        <NavItem Href="learning/adaptive" Icon="zap" Label="Adaptive" />
+        <NavItem Href="learning/resources" Icon="link" Label="Resources" />
+    </NavSection>
+
+    <NavSection Title="Resume & Salary">
+        <NavItem Href="resume" Icon="file" Label="Resume" />
+        <NavItem Href="salary" Icon="dollar" Label="Salary Intel" />
+        <NavItem Href="salary/negotiate" Icon="handshake" Label="Negotiate" />
+    </NavSection>
+
+    <NavSection Title="System">
+        <NavItem Href="monitor" Icon="eye" Label="Monitor" />
+        <NavItem Href="settings/profile" Icon="user" Label="Profile" />
+        <NavItem Href="settings" Icon="settings" Label="Settings" />
+    </NavSection>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

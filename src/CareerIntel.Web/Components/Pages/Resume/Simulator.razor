@@ -1,0 +1,437 @@
+@page "/resume/simulator"
+@inject VacancyRepository VacancyRepo
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Resume Simulator</h1>
+    <p class="page-subtitle">Test your resume against ATS systems, recruiter review, and tech lead evaluation</p>
+</div>
+
+<LoadingSpinner Loading="@_loadingVacancies" Message="Loading vacancies..." />
+
+@if (!_loadingVacancies)
+{
+    <div class="card">
+        <h2 class="card-title">Input</h2>
+        <div class="form-group">
+            <label>Paste Your Resume Text</label>
+            <textarea @bind="_resumeText" rows="12"
+                      placeholder="Paste your resume content here (plain text)..."
+                      style="width: 100%; padding: 0.75rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit; font-family: inherit; resize: vertical;">
+            </textarea>
+        </div>
+        <div class="form-row" style="margin-top: 1rem;">
+            <div class="form-group" style="flex: 1;">
+                <label>Target Vacancy</label>
+                <select @bind="_selectedVacancyId"
+                        style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;">
+                    <option value="">-- Select a vacancy --</option>
+                    @foreach (var v in _vacancies)
+                    {
+                        <option value="@v.Id">@v.Title - @v.Company (@v.SeniorityLevel)</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div style="margin-top: 1rem;">
+            <button class="btn btn-primary" @onclick="RunSimulation"
+                    disabled="@(string.IsNullOrWhiteSpace(_resumeText) || string.IsNullOrEmpty(_selectedVacancyId))">
+                Run Simulation
+            </button>
+        </div>
+    </div>
+
+    @if (_simulationRun)
+    {
+        <div class="card-grid" style="margin-top: 1.5rem;">
+            <StatCard Label="ATS Score" Value="@($"{_atsScore}%")"
+                      Sub="@GetScoreLabel(_atsScore)"
+                      CssClass="@GetScoreCss(_atsScore)" />
+            <StatCard Label="Recruiter Score" Value="@($"{_recruiterScore}%")"
+                      Sub="@GetScoreLabel(_recruiterScore)"
+                      CssClass="@GetScoreCss(_recruiterScore)" />
+            <StatCard Label="Tech Lead Score" Value="@($"{_techLeadScore}%")"
+                      Sub="@GetScoreLabel(_techLeadScore)"
+                      CssClass="@GetScoreCss(_techLeadScore)" />
+            <StatCard Label="Overall" Value="@($"{_overallScore}%")"
+                      Sub="Weighted average"
+                      CssClass="@GetScoreCss(_overallScore)" />
+        </div>
+
+        <div class="card-grid" style="margin-top: 1.5rem;">
+            <div class="card">
+                <h3 class="card-title">Keyword Matches</h3>
+                @if (_matchedKeywords.Count > 0)
+                {
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var keyword in _matchedKeywords)
+                        {
+                            <StatusBadge Text="@keyword" Color="green" />
+                        }
+                    </div>
+                    <p class="text-muted" style="margin-top: 0.75rem;">
+                        @_matchedKeywords.Count of @_totalKeywords keywords found in your resume
+                    </p>
+                }
+                else
+                {
+                    <p class="text-muted">No keyword matches found.</p>
+                }
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">Missing Keywords</h3>
+                @if (_missingKeywords.Count > 0)
+                {
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var keyword in _missingKeywords)
+                        {
+                            <StatusBadge Text="@keyword" Color="red" />
+                        }
+                    </div>
+                    <p class="text-muted" style="margin-top: 0.75rem;">
+                        Add these keywords to improve your ATS score
+                    </p>
+                }
+                else
+                {
+                    <p class="text-muted">All keywords found. Excellent coverage!</p>
+                }
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Detailed Analysis</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Criterion</th>
+                        <th>Score</th>
+                        <th>Assessment</th>
+                        <th>Recommendation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var criterion in _detailedScores)
+                    {
+                        <tr>
+                            <td><strong>@criterion.Name</strong></td>
+                            <td>
+                                <span class="@GetScoreCss(criterion.Score)">@criterion.Score%</span>
+                            </td>
+                            <td>
+                                <StatusBadge Text="@GetScoreLabel(criterion.Score)"
+                                             Color="@GetScoreBadgeColor(criterion.Score)" />
+                            </td>
+                            <td>@criterion.Recommendation</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Resume Statistics</h2>
+            <div class="card-grid">
+                <StatCard Label="Word Count" Value="@_wordCount.ToString("N0")" Sub="@GetWordCountAdvice()" />
+                <StatCard Label="Sentences" Value="@_sentenceCount.ToString("N0")" Sub="detected in text" />
+                <StatCard Label="Skill Keywords" Value="@_matchedKeywords.Count.ToString()"
+                          Sub="@($"of {_totalKeywords} required")" CssClass="text-cyan" />
+                <StatCard Label="Action Verbs" Value="@_actionVerbCount.ToString()"
+                          Sub="found in bullets" CssClass="text-green" />
+            </div>
+        </div>
+    }
+
+    @if (!_simulationRun)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h3 class="card-title">How the Simulator Works</h3>
+            <div class="card-grid">
+                <div class="stat-card">
+                    <h4 class="section-title">ATS (Applicant Tracking System)</h4>
+                    <p>Checks keyword density, required skills coverage, and formatting compatibility with automated resume parsers.</p>
+                </div>
+                <div class="stat-card">
+                    <h4 class="section-title">Recruiter Review</h4>
+                    <p>Evaluates clarity, relevance to the role, professional summary quality, and overall first impression during a 6-second scan.</p>
+                </div>
+                <div class="stat-card">
+                    <h4 class="section-title">Tech Lead Evaluation</h4>
+                    <p>Assesses technical depth, project complexity signals, architecture awareness, and alignment with the team's tech stack.</p>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+        <a href="/resume" class="btn btn-primary">Resume Builder</a>
+        <a href="/jobs" class="btn">Browse Jobs</a>
+    </div>
+}
+
+@code {
+    private bool _loadingVacancies = true;
+    private List<JobVacancy> _vacancies = [];
+    private string _selectedVacancyId = "";
+    private string _resumeText = "";
+    private bool _simulationRun;
+
+    // Scores
+    private int _atsScore;
+    private int _recruiterScore;
+    private int _techLeadScore;
+    private int _overallScore;
+
+    // Keywords
+    private List<string> _matchedKeywords = [];
+    private List<string> _missingKeywords = [];
+    private int _totalKeywords;
+
+    // Stats
+    private int _wordCount;
+    private int _sentenceCount;
+    private int _actionVerbCount;
+
+    // Detailed
+    private List<ScoreCriterion> _detailedScores = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _vacancies = (await VacancyRepo.GetVacanciesAsync())
+            .OrderByDescending(v => v.ScrapedDate)
+            .Take(50)
+            .ToList();
+
+        _loadingVacancies = false;
+    }
+
+    private void RunSimulation()
+    {
+        var vacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
+        if (vacancy is null || string.IsNullOrWhiteSpace(_resumeText))
+            return;
+
+        var resumeLower = _resumeText.ToLowerInvariant();
+        var allKeywords = vacancy.RequiredSkills
+            .Concat(vacancy.PreferredSkills)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _totalKeywords = allKeywords.Count;
+
+        _matchedKeywords = allKeywords
+            .Where(k => resumeLower.Contains(k.ToLowerInvariant()))
+            .ToList();
+
+        _missingKeywords = allKeywords
+            .Where(k => !resumeLower.Contains(k.ToLowerInvariant()))
+            .ToList();
+
+        // Calculate text stats
+        var words = _resumeText.Split([' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        _wordCount = words.Length;
+        _sentenceCount = _resumeText.Count(c => c is '.' or '!' or '?');
+
+        var actionVerbs = new[] { "built", "designed", "implemented", "led", "managed", "developed", "created",
+            "optimized", "architected", "deployed", "delivered", "improved", "reduced", "increased", "launched",
+            "migrated", "automated", "refactored", "mentored", "collaborated", "integrated", "scaled" };
+        _actionVerbCount = actionVerbs.Count(v => resumeLower.Contains(v));
+
+        // Calculate scores
+        var keywordCoverage = _totalKeywords > 0 ? (double)_matchedKeywords.Count / _totalKeywords : 0;
+
+        // ATS Score: keyword matching + formatting
+        _atsScore = CalculateAtsScore(keywordCoverage);
+
+        // Recruiter Score: clarity + relevance
+        _recruiterScore = CalculateRecruiterScore(keywordCoverage);
+
+        // Tech Lead Score: technical depth
+        _techLeadScore = CalculateTechLeadScore(keywordCoverage, vacancy);
+
+        // Overall: weighted average (ATS 40%, Recruiter 30%, Tech Lead 30%)
+        _overallScore = (int)(_atsScore * 0.4 + _recruiterScore * 0.3 + _techLeadScore * 0.3);
+
+        // Detailed scores
+        _detailedScores = GenerateDetailedScores(vacancy, keywordCoverage);
+
+        _simulationRun = true;
+    }
+
+    private int CalculateAtsScore(double keywordCoverage)
+    {
+        var score = (int)(keywordCoverage * 70);
+
+        // Bonus for good length
+        if (_wordCount is >= 400 and <= 800)
+            score += 15;
+        else if (_wordCount is >= 300 and <= 1000)
+            score += 10;
+
+        // Bonus for action verbs
+        score += Math.Min(_actionVerbCount * 2, 15);
+
+        return Math.Min(score, 100);
+    }
+
+    private int CalculateRecruiterScore(double keywordCoverage)
+    {
+        var score = (int)(keywordCoverage * 50);
+
+        // Clarity: penalize very long or very short
+        if (_wordCount is >= 350 and <= 700)
+            score += 20;
+        else if (_wordCount is >= 200 and <= 900)
+            score += 10;
+
+        // Action verbs signal achievement-oriented writing
+        score += Math.Min(_actionVerbCount * 3, 20);
+
+        // Sentence count indicates structure
+        if (_sentenceCount is >= 15 and <= 40)
+            score += 10;
+
+        return Math.Min(score, 100);
+    }
+
+    private int CalculateTechLeadScore(double keywordCoverage, JobVacancy vacancy)
+    {
+        var score = (int)(keywordCoverage * 40);
+        var resumeLower = _resumeText.ToLowerInvariant();
+
+        // Technical depth indicators
+        var depthKeywords = new[] { "architecture", "scalab", "performance", "distributed", "microservice",
+            "cache", "database", "optimization", "concurrency", "async", "design pattern",
+            "ci/cd", "monitoring", "logging", "security", "testing" };
+        var depthCount = depthKeywords.Count(k => resumeLower.Contains(k));
+        score += Math.Min(depthCount * 4, 30);
+
+        // Quantified achievements
+        var hasNumbers = System.Text.RegularExpressions.Regex.IsMatch(_resumeText, @"\d+[%xX]|\d+K|\d+k");
+        if (hasNumbers)
+            score += 15;
+
+        // Seniority alignment
+        if (vacancy.SeniorityLevel >= SeniorityLevel.Senior && resumeLower.Contains("senior"))
+            score += 10;
+        if (resumeLower.Contains("mentor") || resumeLower.Contains("lead"))
+            score += 5;
+
+        return Math.Min(score, 100);
+    }
+
+    private List<ScoreCriterion> GenerateDetailedScores(JobVacancy vacancy, double keywordCoverage)
+    {
+        return
+        [
+            new()
+            {
+                Name = "Keyword Coverage",
+                Score = (int)(keywordCoverage * 100),
+                Recommendation = keywordCoverage >= 0.8
+                    ? "Excellent keyword coverage. Your resume matches most required skills."
+                    : $"Add missing keywords: {string.Join(", ", _missingKeywords.Take(5))}"
+            },
+            new()
+            {
+                Name = "Resume Length",
+                Score = _wordCount switch
+                {
+                    >= 400 and <= 700 => 95,
+                    >= 300 and <= 900 => 75,
+                    >= 200 and <= 1200 => 55,
+                    _ => 30
+                },
+                Recommendation = _wordCount < 300
+                    ? "Resume is too short. Add more detail about your experience and achievements."
+                    : _wordCount > 900
+                        ? "Resume may be too long. Focus on the most relevant experience for this role."
+                        : "Good resume length for a single-page format."
+            },
+            new()
+            {
+                Name = "Action Verbs",
+                Score = Math.Min(_actionVerbCount * 10, 100),
+                Recommendation = _actionVerbCount < 5
+                    ? "Use more action verbs (built, designed, implemented, optimized, led) to describe achievements."
+                    : "Good use of action verbs. Your resume communicates achievement effectively."
+            },
+            new()
+            {
+                Name = "Quantified Achievements",
+                Score = System.Text.RegularExpressions.Regex.IsMatch(_resumeText, @"\d+[%xX]|\d+K|\d+k") ? 85 : 25,
+                Recommendation = "Include numbers and metrics (e.g., \"reduced latency by 40%\", \"served 10K requests/sec\")."
+            },
+            new()
+            {
+                Name = "Seniority Alignment",
+                Score = GetSeniorityAlignmentScore(vacancy),
+                Recommendation = $"Ensure your resume reflects {vacancy.SeniorityLevel}-level experience and responsibilities."
+            }
+        ];
+    }
+
+    private int GetSeniorityAlignmentScore(JobVacancy vacancy)
+    {
+        var resumeLower = _resumeText.ToLowerInvariant();
+        var score = 50;
+
+        if (vacancy.SeniorityLevel >= SeniorityLevel.Senior)
+        {
+            if (resumeLower.Contains("senior")) score += 15;
+            if (resumeLower.Contains("architect")) score += 10;
+            if (resumeLower.Contains("lead") || resumeLower.Contains("mentor")) score += 10;
+            if (resumeLower.Contains("design") && resumeLower.Contains("system")) score += 10;
+        }
+        else
+        {
+            if (resumeLower.Contains("project")) score += 15;
+            if (resumeLower.Contains("collaborat")) score += 10;
+            if (resumeLower.Contains("learn")) score += 10;
+        }
+
+        return Math.Min(score, 100);
+    }
+
+    private string GetWordCountAdvice()
+    {
+        if (_wordCount < 200) return "too short";
+        if (_wordCount < 400) return "slightly short";
+        if (_wordCount <= 700) return "optimal length";
+        if (_wordCount <= 900) return "slightly long";
+        return "too long";
+    }
+
+    private static string GetScoreLabel(int score) => score switch
+    {
+        >= 85 => "Excellent",
+        >= 70 => "Good",
+        >= 50 => "Fair",
+        >= 30 => "Needs Work",
+        _ => "Poor"
+    };
+
+    private static string GetScoreCss(int score) => score switch
+    {
+        >= 70 => "text-green",
+        >= 50 => "text-cyan",
+        >= 30 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetScoreBadgeColor(int score) => score switch
+    {
+        >= 70 => "green",
+        >= 50 => "cyan",
+        >= 30 => "yellow",
+        _ => "red"
+    };
+
+    private sealed class ScoreCriterion
+    {
+        public string Name { get; set; } = string.Empty;
+        public int Score { get; set; }
+        public string Recommendation { get; set; } = string.Empty;
+    }
+}

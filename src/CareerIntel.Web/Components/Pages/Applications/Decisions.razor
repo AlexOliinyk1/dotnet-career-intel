@@ -1,0 +1,350 @@
+@page "/applications/decisions"
+@inject DataDirectoryConfig DataDir
+@inject VacancyRepository VacancyRepo
+@rendermode InteractiveServer
+
+<div class="page-header">
+    <h1 class="page-title">GO / NO-GO Decisions</h1>
+    <p>Evaluate vacancies before committing time to applications</p>
+</div>
+
+<LoadingSpinner Loading="_loading" Message="Loading vacancies..." />
+
+@if (!_loading)
+{
+    @if (_vacancies.Count == 0)
+    {
+        <div class="card">
+            <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                No vacancies found. Run a scrape first to populate the database.
+            </p>
+        </div>
+    }
+    else
+    {
+        @* Summary *@
+        <div class="card-grid" style="margin-bottom: 1.5rem;">
+            <StatCard Label="Vacancies Loaded" Value="@_vacancies.Count.ToString()" />
+            <StatCard Label="Evaluated" Value="@_decisions.Count.ToString()" CssClass="highlight-blue" />
+            <StatCard Label="APPLY NOW" Value="@_decisions.Count(d => d.Value.Verdict == "APPLY_NOW").ToString()" CssClass="highlight-green" />
+            <StatCard Label="SKIP" Value="@_decisions.Count(d => d.Value.Verdict == "SKIP").ToString()" CssClass="highlight-red" />
+        </div>
+
+        @* Filter *@
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: end;">
+                <div class="form-group" style="flex: 1; min-width: 200px;">
+                    <label>Search</label>
+                    <input type="text" @bind="_search" @bind:event="oninput" placeholder="Company or title..." />
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 160px;">
+                    <label>Filter by decision</label>
+                    <select @bind="_decisionFilter">
+                        <option value="">All</option>
+                        <option value="undecided">Undecided</option>
+                        <option value="APPLY_NOW">APPLY NOW</option>
+                        <option value="LEARN_THEN_APPLY">LEARN THEN APPLY</option>
+                        <option value="SKIP">SKIP</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        @* Vacancy List *@
+        @foreach (var vacancy in FilteredVacancies)
+        {
+            var hasDecision = _decisions.TryGetValue(vacancy.Id, out var decision);
+
+            <div class="card" style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+                    <div style="flex: 1; min-width: 300px;">
+                        <h3 class="card-title" style="margin-bottom: 0.25rem;">@vacancy.Title</h3>
+                        <div style="color: var(--text-muted); margin-bottom: 0.5rem;">
+                            @vacancy.Company
+                            @if (!string.IsNullOrEmpty(vacancy.Country))
+                            {
+                                <span> &middot; @vacancy.Country</span>
+                            }
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+                            <StatusBadge Text="@vacancy.RemotePolicy.ToString()"
+                                         Color="@StatusBadge.GetColorForStatus(vacancy.RemotePolicy.ToString())" />
+                            <StatusBadge Text="@vacancy.SeniorityLevel.ToString()"
+                                         Color="gray" />
+                            @if (vacancy.RequiredSkills.Count > 0)
+                            {
+                                @foreach (var skill in vacancy.RequiredSkills.Take(5))
+                                {
+                                    <span class="badge badge-blue">@skill</span>
+                                }
+                                @if (vacancy.RequiredSkills.Count > 5)
+                                {
+                                    <span class="badge badge-gray">+@(vacancy.RequiredSkills.Count - 5)</span>
+                                }
+                            }
+                        </div>
+                        @if (vacancy.SalaryMax.HasValue)
+                        {
+                            <div style="font-size: 0.85rem;">
+                                Salary: @(vacancy.SalaryMin?.ToString("C0") ?? "?") - @vacancy.SalaryMax.Value.ToString("C0") @vacancy.SalaryCurrency
+                            </div>
+                        }
+                    </div>
+
+                    <div style="min-width: 200px; text-align: right;">
+                        @if (!hasDecision)
+                        {
+                            <button class="btn btn-primary" @onclick="() => Decide(vacancy)">
+                                Decide
+                            </button>
+                        }
+                        else
+                        {
+                            <div style="margin-bottom: 0.5rem;">
+                                <span class="badge badge-@GetVerdictColor(decision!.Verdict)" style="font-size: 1rem; padding: 0.4rem 0.8rem;">
+                                    @FormatVerdict(decision.Verdict)
+                                </span>
+                            </div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted);">
+                                Match: <span class="@GetScoreTextClass(decision.MatchScore)">@decision.MatchScore%</span>
+                                &middot; Confidence: @decision.Confidence%
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @if (hasDecision && decision != null)
+                {
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                        @* Reasoning *@
+                        <div style="margin-bottom: 0.75rem;">
+                            <span class="section-title">Reasoning</span>
+                            <pre style="white-space: pre-wrap; font-size: 0.85rem; margin-top: 0.25rem;">@decision.Reasoning</pre>
+                        </div>
+
+                        @* Skill Gaps *@
+                        @if (decision.SkillGaps.Count > 0)
+                        {
+                            <div style="margin-bottom: 0.75rem;">
+                                <span class="section-title">Skill Gaps (@decision.SkillGaps.Count)</span>
+                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                                    @foreach (var gap in decision.SkillGaps)
+                                    {
+                                        <span class="badge badge-@(gap.IsCritical ? "red" : "yellow")">
+                                            @gap.SkillName (@gap.HoursToLearn h)
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @* Learning Hours *@
+                        @if (decision.EstimatedLearningHours > 0)
+                        {
+                            <div style="font-size: 0.85rem; color: var(--text-muted);">
+                                Estimated learning: <strong>@decision.EstimatedLearningHours hours</strong>
+                                @if (decision.ApplyByDate.HasValue)
+                                {
+                                    <span> &middot; Apply by: @decision.ApplyByDate.Value.ToString("yyyy-MM-dd")</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (!FilteredVacancies.Any())
+        {
+            <div class="card">
+                <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    No vacancies match the current filters.
+                </p>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<JobVacancy> _vacancies = [];
+    private Dictionary<string, DecisionResult> _decisions = [];
+    private bool _loading = true;
+    private string _search = "";
+    private string _decisionFilter = "";
+
+    private IEnumerable<JobVacancy> FilteredVacancies => _vacancies
+        .Where(v => string.IsNullOrEmpty(_search)
+            || v.Title.Contains(_search, StringComparison.OrdinalIgnoreCase)
+            || v.Company.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(v =>
+        {
+            if (string.IsNullOrEmpty(_decisionFilter)) return true;
+            if (_decisionFilter == "undecided") return !_decisions.ContainsKey(v.Id);
+            return _decisions.TryGetValue(v.Id, out var d) && d.Verdict == _decisionFilter;
+        })
+        .Take(50);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Load recent vacancies from the database
+            _vacancies = await VacancyRepo.GetVacanciesAsync(
+                since: DateTimeOffset.UtcNow.AddDays(-30));
+        }
+        catch
+        {
+            _vacancies = [];
+        }
+
+        // Load cached decisions
+        var decisionsPath = Path.Combine(DataDir.Path, "decisions-cache.json");
+        if (File.Exists(decisionsPath))
+        {
+            var json = await File.ReadAllTextAsync(decisionsPath);
+            _decisions = JsonSerializer.Deserialize<Dictionary<string, DecisionResult>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        }
+
+        _loading = false;
+    }
+
+    private async Task Decide(JobVacancy vacancy)
+    {
+        // Placeholder decision logic: score based on required skills count and salary
+        var matchScore = CalculatePlaceholderMatch(vacancy);
+        var skillGaps = CalculatePlaceholderGaps(vacancy);
+        var learningHours = skillGaps.Sum(g => g.HoursToLearn);
+
+        string verdict;
+        string reasoning;
+
+        if (matchScore >= 75)
+        {
+            verdict = "APPLY_NOW";
+            reasoning = $"Strong fit: {matchScore}% match, {skillGaps.Count(g => g.IsCritical)} critical gaps\n-> APPLY NOW - you're ready enough";
+        }
+        else if (matchScore >= 50 && learningHours <= 40)
+        {
+            verdict = "LEARN_THEN_APPLY";
+            reasoning = $"Good potential ({matchScore}% match) but needs preparation\n{skillGaps.Count(g => g.IsCritical)} critical gaps, ~{learningHours}h learning\n-> LEARN first, then APPLY";
+        }
+        else
+        {
+            verdict = "SKIP";
+            reasoning = matchScore < 30
+                ? $"Poor match ({matchScore}%) - not aligned with your skills\n-> SKIP - focus on better opportunities"
+                : $"Learning time ({learningHours}h) not justified by match quality ({matchScore}%)\n-> SKIP";
+        }
+
+        var result = new DecisionResult
+        {
+            Verdict = verdict,
+            Reasoning = reasoning,
+            MatchScore = matchScore,
+            Confidence = matchScore >= 70 ? 90 : (matchScore >= 50 ? 75 : 70),
+            SkillGaps = skillGaps,
+            EstimatedLearningHours = verdict == "LEARN_THEN_APPLY" ? learningHours : 0,
+            ApplyByDate = verdict == "APPLY_NOW"
+                ? DateTimeOffset.UtcNow.AddDays(2)
+                : (verdict == "LEARN_THEN_APPLY"
+                    ? DateTimeOffset.UtcNow.AddDays((int)Math.Ceiling(learningHours / 2.0) + 1)
+                    : null)
+        };
+
+        _decisions[vacancy.Id] = result;
+
+        // Persist decisions
+        var decisionsPath = Path.Combine(DataDir.Path, "decisions-cache.json");
+        var json = JsonSerializer.Serialize(_decisions, new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(decisionsPath, json);
+    }
+
+    private static int CalculatePlaceholderMatch(JobVacancy vacancy)
+    {
+        // Placeholder scoring heuristic based on available vacancy data
+        var score = 50; // Base
+
+        if (vacancy.RequiredSkills.Count <= 5) score += 15;
+        else if (vacancy.RequiredSkills.Count <= 10) score += 5;
+
+        if (vacancy.RemotePolicy == RemotePolicy.FullyRemote) score += 10;
+        else if (vacancy.RemotePolicy == RemotePolicy.Hybrid) score += 5;
+
+        if (vacancy.SalaryMax.HasValue && vacancy.SalaryMax >= 80000) score += 10;
+
+        if (vacancy.PreferredSkills.Count > 0) score += 5;
+
+        return Math.Clamp(score, 0, 100);
+    }
+
+    private static List<SkillGapInfo> CalculatePlaceholderGaps(JobVacancy vacancy)
+    {
+        // Placeholder: treat skills beyond common ones as gaps
+        var commonSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "C#", ".NET", "ASP.NET", "SQL", "Git", "REST", "API", "Docker",
+            "JavaScript", "TypeScript", "HTML", "CSS", "Linux", "Azure"
+        };
+
+        return vacancy.RequiredSkills
+            .Where(s => !commonSkills.Contains(s))
+            .Select(s => new SkillGapInfo
+            {
+                SkillName = s,
+                IsCritical = true,
+                HoursToLearn = EstimateHours(s)
+            })
+            .ToList();
+    }
+
+    private static int EstimateHours(string skill)
+    {
+        var advanced = new[] { "kubernetes", "system design", "microservices", "distributed systems", "aws", "gcp" };
+        if (advanced.Any(a => skill.Contains(a, StringComparison.OrdinalIgnoreCase)))
+            return 24;
+        return 8;
+    }
+
+    private static string GetVerdictColor(string verdict) => verdict switch
+    {
+        "APPLY_NOW" => "green",
+        "LEARN_THEN_APPLY" => "yellow",
+        "SKIP" => "red",
+        _ => "gray"
+    };
+
+    private static string FormatVerdict(string verdict) => verdict switch
+    {
+        "APPLY_NOW" => "APPLY NOW",
+        "LEARN_THEN_APPLY" => "LEARN THEN APPLY",
+        "SKIP" => "SKIP",
+        _ => verdict
+    };
+
+    private static string GetScoreTextClass(int score) => score switch
+    {
+        >= 80 => "text-green",
+        >= 60 => "text-yellow",
+        _ => "text-red"
+    };
+
+    // Lightweight models for serialization (avoids coupling to Matching project types)
+    private sealed class DecisionResult
+    {
+        public string Verdict { get; set; } = string.Empty;
+        public string Reasoning { get; set; } = string.Empty;
+        public int MatchScore { get; set; }
+        public int Confidence { get; set; }
+        public List<SkillGapInfo> SkillGaps { get; set; } = [];
+        public int EstimatedLearningHours { get; set; }
+        public DateTimeOffset? ApplyByDate { get; set; }
+    }
+
+    private sealed class SkillGapInfo
+    {
+        public string SkillName { get; set; } = string.Empty;
+        public bool IsCritical { get; set; }
+        public int HoursToLearn { get; set; }
+    }
+}

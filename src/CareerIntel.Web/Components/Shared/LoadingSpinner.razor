@@ -1,0 +1,12 @@
+@if (Loading)
+{
+    <div class="loading-spinner">
+        <div class="spinner"></div>
+        <span>@Message</span>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string Message { get; set; } = "Loading...";
+}

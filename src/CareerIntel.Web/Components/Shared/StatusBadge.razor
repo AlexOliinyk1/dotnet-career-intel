@@ -1,0 +1,22 @@
+<span class="badge badge-@Color">@Text</span>
+
+@code {
+    [Parameter] public string Text { get; set; } = "";
+    [Parameter] public string Color { get; set; } = "gray";
+
+    public static string GetColorForStatus(string status) => status.ToLowerInvariant() switch
+    {
+        "new" or "pending" or "unknown" => "gray",
+        "interested" or "applied" or "screening" => "blue",
+        "replied" or "interview" or "interviewing" => "cyan",
+        "offer" or "converted" or "passed" => "green",
+        "declined" or "rejected" or "expired" => "red",
+        "remote" or "fullyremote" => "green",
+        "hybrid" => "yellow",
+        "on-site" or "onsite" => "orange",
+        "critical" or "high" => "red",
+        "medium" => "yellow",
+        "low" => "gray",
+        _ => "gray"
+    };
+}
