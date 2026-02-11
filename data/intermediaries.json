@@ -1,0 +1,312 @@
+[
+  {
+    "name": "EPAM Systems",
+    "aliases": ["EPAM", "EPAM Systems Inc"],
+    "domain": "epam.com",
+    "type": "Outsource",
+    "region": "Ukraine/Global",
+    "estimatedMarkup": 0.45,
+    "careersUrl": "https://www.epam.com/careers",
+    "notes": "Largest Ukrainian-origin outsourcer, 50k+ engineers"
+  },
+  {
+    "name": "SoftServe",
+    "aliases": ["SoftServe Inc", "SoftServe UA"],
+    "domain": "softserveinc.com",
+    "type": "Outsource",
+    "region": "Ukraine/Global",
+    "estimatedMarkup": 0.40,
+    "careersUrl": "https://career.softserveinc.com",
+    "notes": "Major Ukrainian outsourcer, 10k+ engineers"
+  },
+  {
+    "name": "GlobalLogic",
+    "aliases": ["GlobalLogic Inc", "GlobalLogic Ukraine"],
+    "domain": "globallogic.com",
+    "type": "Outsource",
+    "region": "Ukraine/Global",
+    "estimatedMarkup": 0.40,
+    "careersUrl": "https://www.globallogic.com/careers",
+    "notes": "Hitachi subsidiary, large Ukrainian presence"
+  },
+  {
+    "name": "Luxoft",
+    "aliases": ["Luxoft Global", "Luxoft Ukraine", "DXC Luxoft"],
+    "domain": "luxoft.com",
+    "type": "Outsource",
+    "region": "Ukraine/Global",
+    "estimatedMarkup": 0.40,
+    "careersUrl": "https://career.luxoft.com",
+    "notes": "DXC Technology subsidiary"
+  },
+  {
+    "name": "Ciklum",
+    "aliases": ["Ciklum ApS"],
+    "domain": "ciklum.com",
+    "type": "Outsource",
+    "region": "Ukraine/Europe",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://www.ciklum.com/careers",
+    "notes": "Danish-Ukrainian outsourcer"
+  },
+  {
+    "name": "DataArt",
+    "aliases": ["DataArt Solutions"],
+    "domain": "dataart.com",
+    "type": "Outsource",
+    "region": "Ukraine/Global",
+    "estimatedMarkup": 0.40,
+    "careersUrl": "https://www.dataart.com/careers",
+    "notes": "Mid-size outsourcer with strong fintech focus"
+  },
+  {
+    "name": "Infopulse",
+    "aliases": ["Infopulse Ukraine"],
+    "domain": "infopulse.com",
+    "type": "Outsource",
+    "region": "Ukraine/Europe",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://www.infopulse.com/careers",
+    "notes": "TietoEVRY subsidiary"
+  },
+  {
+    "name": "N-iX",
+    "aliases": ["NIX", "N-iX Ltd"],
+    "domain": "n-ix.com",
+    "type": "Outsource",
+    "region": "Ukraine/Europe",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://n-ix.com/careers",
+    "notes": "Mid-size Ukrainian outsourcer"
+  },
+  {
+    "name": "Intellias",
+    "aliases": ["Intellias Ltd"],
+    "domain": "intellias.com",
+    "type": "Outsource",
+    "region": "Ukraine/Europe",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://intellias.com/careers",
+    "notes": "Automotive and fintech focused"
+  },
+  {
+    "name": "Sigma Software",
+    "aliases": ["Sigma Software Group"],
+    "domain": "sigma.software",
+    "type": "Outsource",
+    "region": "Ukraine/Nordics",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://sigma.software/careers",
+    "notes": "Swedish-Ukrainian outsourcer"
+  },
+  {
+    "name": "Grid Dynamics",
+    "aliases": ["Grid Dynamics Holdings"],
+    "domain": "griddynamics.com",
+    "type": "Outsource",
+    "region": "Ukraine/US",
+    "estimatedMarkup": 0.40,
+    "careersUrl": "https://www.griddynamics.com/careers",
+    "notes": "US-listed, strong retail/ecommerce clients"
+  },
+  {
+    "name": "Eleks",
+    "aliases": ["ELEKS Ltd"],
+    "domain": "eleks.com",
+    "type": "Outsource",
+    "region": "Ukraine/Europe",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://eleks.com/careers",
+    "notes": "Mid-size Ukrainian outsourcer"
+  },
+  {
+    "name": "Miratech",
+    "aliases": ["Miratech Group"],
+    "domain": "miratech.com",
+    "type": "Outsource",
+    "region": "Ukraine/Global",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://miratech.com/careers",
+    "notes": "Mid-size Ukrainian outsourcer"
+  },
+  {
+    "name": "Avenga",
+    "aliases": ["Avenga Germany", "Avenga Ukraine"],
+    "domain": "avenga.com",
+    "type": "Outsource",
+    "region": "Ukraine/Germany",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://www.avenga.com/careers",
+    "notes": "German-Ukrainian outsourcer"
+  },
+  {
+    "name": "Lohika",
+    "aliases": ["Lohika Systems"],
+    "domain": "lohika.com",
+    "type": "Outsource",
+    "region": "Ukraine/US",
+    "estimatedMarkup": 0.35,
+    "careersUrl": null,
+    "notes": "Acquired by Altran/Capgemini"
+  },
+  {
+    "name": "Netguru",
+    "aliases": ["Netguru S.A."],
+    "domain": "netguru.com",
+    "type": "Outsource",
+    "region": "Poland/Europe",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://www.netguru.com/career",
+    "notes": "Polish outsourcer"
+  },
+  {
+    "name": "STX Next",
+    "aliases": ["STXNext"],
+    "domain": "stxnext.com",
+    "type": "Outsource",
+    "region": "Poland/Europe",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://www.stxnext.com/careers",
+    "notes": "Polish Python-focused outsourcer"
+  },
+  {
+    "name": "Objectivity",
+    "aliases": ["Objectivity Ltd", "Objectivity Bespoke Software Specialists"],
+    "domain": "objectivity.co.uk",
+    "type": "Outsource",
+    "region": "Poland/UK",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://www.objectivity.co.uk/careers",
+    "notes": "Polish-British .NET outsourcer"
+  },
+  {
+    "name": "Capgemini",
+    "aliases": ["Capgemini Engineering", "Capgemini Polska"],
+    "domain": "capgemini.com",
+    "type": "Consulting",
+    "region": "Global",
+    "estimatedMarkup": 0.50,
+    "careersUrl": "https://www.capgemini.com/careers",
+    "notes": "Big consulting, high markup"
+  },
+  {
+    "name": "Accenture",
+    "aliases": ["Accenture Polska", "Accenture Technology"],
+    "domain": "accenture.com",
+    "type": "Consulting",
+    "region": "Global",
+    "estimatedMarkup": 0.50,
+    "careersUrl": "https://www.accenture.com/careers",
+    "notes": "Big consulting, high markup"
+  },
+  {
+    "name": "Cognizant",
+    "aliases": ["Cognizant Technology Solutions"],
+    "domain": "cognizant.com",
+    "type": "Consulting",
+    "region": "Global",
+    "estimatedMarkup": 0.45,
+    "careersUrl": "https://careers.cognizant.com",
+    "notes": "Large consulting/outsourcing"
+  },
+  {
+    "name": "Hays",
+    "aliases": ["Hays Technology", "Hays IT", "Hays Recruitment"],
+    "domain": "hays.com",
+    "type": "Staffing",
+    "region": "Global",
+    "estimatedMarkup": 0.25,
+    "careersUrl": null,
+    "notes": "Recruitment agency, lower markup but still a middleman"
+  },
+  {
+    "name": "Robert Half",
+    "aliases": ["Robert Half Technology", "Robert Half International"],
+    "domain": "roberthalf.com",
+    "type": "Staffing",
+    "region": "Global",
+    "estimatedMarkup": 0.30,
+    "careersUrl": null,
+    "notes": "Recruitment/staffing agency"
+  },
+  {
+    "name": "Randstad",
+    "aliases": ["Randstad Technologies", "Randstad Digital"],
+    "domain": "randstad.com",
+    "type": "Staffing",
+    "region": "Global",
+    "estimatedMarkup": 0.25,
+    "careersUrl": null,
+    "notes": "Recruitment/staffing agency"
+  },
+  {
+    "name": "Adecco",
+    "aliases": ["Adecco Group", "Adecco IT"],
+    "domain": "adecco.com",
+    "type": "Staffing",
+    "region": "Global",
+    "estimatedMarkup": 0.25,
+    "careersUrl": null,
+    "notes": "Recruitment/staffing agency"
+  },
+  {
+    "name": "Michael Page",
+    "aliases": ["Michael Page Technology", "Page Group"],
+    "domain": "michaelpage.com",
+    "type": "Staffing",
+    "region": "Global",
+    "estimatedMarkup": 0.25,
+    "careersUrl": null,
+    "notes": "Recruitment agency"
+  },
+  {
+    "name": "Tata Consultancy Services",
+    "aliases": ["TCS", "TCS IT"],
+    "domain": "tcs.com",
+    "type": "Outsource",
+    "region": "India/Global",
+    "estimatedMarkup": 0.50,
+    "careersUrl": "https://www.tcs.com/careers",
+    "notes": "Largest Indian outsourcer"
+  },
+  {
+    "name": "Infosys",
+    "aliases": ["Infosys Ltd", "Infosys BPO"],
+    "domain": "infosys.com",
+    "type": "Outsource",
+    "region": "India/Global",
+    "estimatedMarkup": 0.45,
+    "careersUrl": "https://www.infosys.com/careers",
+    "notes": "Major Indian outsourcer"
+  },
+  {
+    "name": "Wipro",
+    "aliases": ["Wipro Ltd", "Wipro Technologies"],
+    "domain": "wipro.com",
+    "type": "Outsource",
+    "region": "India/Global",
+    "estimatedMarkup": 0.45,
+    "careersUrl": "https://careers.wipro.com",
+    "notes": "Major Indian outsourcer"
+  },
+  {
+    "name": "HCLTech",
+    "aliases": ["HCL Technologies", "HCL"],
+    "domain": "hcltech.com",
+    "type": "Outsource",
+    "region": "India/Global",
+    "estimatedMarkup": 0.45,
+    "careersUrl": "https://www.hcltech.com/careers",
+    "notes": "Major Indian outsourcer"
+  },
+  {
+    "name": "Devoteam",
+    "aliases": ["Devoteam S.A."],
+    "domain": "devoteam.com",
+    "type": "Consulting",
+    "region": "Europe",
+    "estimatedMarkup": 0.35,
+    "careersUrl": "https://www.devoteam.com/careers",
+    "notes": "European consulting firm"
+  }
+]

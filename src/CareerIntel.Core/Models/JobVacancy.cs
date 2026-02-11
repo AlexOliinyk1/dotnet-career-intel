@@ -75,6 +75,13 @@ public sealed class JobVacancy
     public DateTimeOffset ScrapedDate { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>
+    /// Structured breakdown of the description into responsibilities, requirements, benefits, etc.
+    /// Null until parsing is performed via JobDescriptionParser.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JobDescriptionBreakdown? Breakdown { get; set; }
+
+    /// <summary>
     /// Computed match score against the user's profile. Null until matching is performed.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

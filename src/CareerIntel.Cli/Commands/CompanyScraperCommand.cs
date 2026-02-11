@@ -42,7 +42,7 @@ public static class CompanyScraperCommand
             "--detect-ats",
             description: "Only detect ATS, don't scrape jobs");
 
-        var command = new Command("companies", "Scrape jobs from individual company career pages")
+        var command = new Command("scrape-company", "Scrape jobs from individual company career pages")
         {
             scrapeOption,
             urlOption,

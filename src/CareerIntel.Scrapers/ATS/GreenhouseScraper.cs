@@ -68,8 +68,7 @@ public sealed class GreenhouseScraper
                     Description = job.Content ?? job.Title ?? "",
                     RequiredSkills = ExtractSkills(job.Content),
                     PostedDate = job.UpdatedAt,
-                    SourcePlatform = "Greenhouse",
-                    Departments = job.Departments?.Select(d => d.Name).ToList() ?? []
+                    SourcePlatform = "Greenhouse"
                 });
             }
 

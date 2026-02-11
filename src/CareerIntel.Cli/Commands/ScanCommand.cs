@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using CareerIntel.Core.Interfaces;
 using CareerIntel.Core.Models;
+using CareerIntel.Intelligence;
 using CareerIntel.Persistence;
 
 namespace CareerIntel.Cli.Commands;
@@ -90,6 +91,9 @@ public static class ScanCommand
                 Console.ResetColor();
             }
         }
+
+        // Auto-parse job descriptions into structured sections
+        JobDescriptionParser.ParseAndAttachBatch(allVacancies);
 
         // Determine output path
         var outputPath = output ?? Path.Combine(

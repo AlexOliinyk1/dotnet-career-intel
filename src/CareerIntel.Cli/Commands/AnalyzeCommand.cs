@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using CareerIntel.Core.Interfaces;
 using CareerIntel.Core.Models;
+using CareerIntel.Intelligence;
 
 namespace CareerIntel.Cli.Commands;
 
@@ -132,6 +133,42 @@ public static class AnalyzeCommand
             {
                 var pct = (double)count / vacancies.Count * 100;
                 Console.WriteLine($"  {policy,-16} {count,4} ({pct:F1}%)");
+            }
+        }
+
+        // Technology demand rates
+        var techReport = TechDemandAnalyzer.Analyze(vacancies);
+        if (techReport.Items.Count > 0)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("=== Technology Demand Rates ===");
+            Console.ResetColor();
+
+            foreach (var item in techReport.Items.Take(30))
+            {
+                var bar = new string('#', (int)(item.Percentage / 3));
+                Console.Write($"  {item.Technology,-22}");
+                Console.ForegroundColor = item.Percentage >= 30 ? ConsoleColor.Green :
+                    item.Percentage >= 15 ? ConsoleColor.Yellow : ConsoleColor.DarkGray;
+                Console.Write($" {item.Percentage,5:F1}%");
+                Console.ResetColor();
+                Console.Write($" ({item.Count,3} of {techReport.TotalVacancies}) ");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write($"[{item.Category}]");
+                Console.ResetColor();
+                Console.Write($" {bar}");
+                Console.WriteLine();
+            }
+
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("=== Demand by Category ===");
+            Console.ResetColor();
+
+            foreach (var cat in techReport.ByCategory)
+            {
+                Console.WriteLine($"  {cat.Category,-16} {cat.TotalMentions,4} mentions across {cat.TechCount} technologies (top: {cat.TopTech})");
             }
         }
 

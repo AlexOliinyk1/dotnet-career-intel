@@ -68,8 +68,7 @@ public sealed class LeverScraper
                     Description = job.Description ?? job.DescriptionPlain ?? job.Text ?? "",
                     RequiredSkills = ExtractSkills(job.DescriptionPlain ?? job.Description),
                     PostedDate = job.CreatedAt,
-                    SourcePlatform = "Lever",
-                    Departments = job.Categories?.Team != null ? [job.Categories.Team] : []
+                    SourcePlatform = "Lever"
                 });
             }
 

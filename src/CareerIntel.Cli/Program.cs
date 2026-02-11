@@ -67,7 +67,11 @@ public static class Program
             InterviewQuestionsCommand.Create(),
             DocumentationCommand.Create(),
             StackAnalysisCommand.Create(),
-            RemoteJobsCommand.Create()
+            RemoteJobsCommand.Create(),
+            CompanyScraperCommand.Create(),
+            BridgeCheckCommand.Create(),
+            AdaptiveLearnCommand.Create(),
+            MockInterviewCommand.Create()
         };
 
         var dataOption = new Option<string>(

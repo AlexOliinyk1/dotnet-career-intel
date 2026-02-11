@@ -15,6 +15,8 @@ public sealed class UniversalCompanyScraper
     private readonly ILogger<UniversalCompanyScraper> _logger;
     private readonly GreenhouseScraper _greenhouseScraper;
     private readonly LeverScraper _leverScraper;
+    private readonly WorkableScraper _workableScraper;
+    private readonly AshbyScraper _ashbyScraper;
 
     public UniversalCompanyScraper(HttpClient httpClient, ILogger<UniversalCompanyScraper> logger)
     {
@@ -24,6 +26,8 @@ public sealed class UniversalCompanyScraper
             ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<GreenhouseScraper>.Instance);
         _leverScraper = new LeverScraper(httpClient, logger as ILogger<LeverScraper>
             ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<LeverScraper>.Instance);
+        _workableScraper = new WorkableScraper(httpClient, logger);
+        _ashbyScraper = new AshbyScraper(httpClient, logger);
     }
 
     /// <summary>
@@ -81,7 +85,7 @@ public sealed class UniversalCompanyScraper
     /// <summary>
     /// Detects which ATS (Applicant Tracking System) a company uses.
     /// </summary>
-    private async Task<ATSInfo> DetectATSAsync(string careersUrl, CancellationToken cancellationToken)
+    internal async Task<ATSInfo> DetectATSAsync(string careersUrl, CancellationToken cancellationToken)
     {
         try
         {
@@ -188,17 +192,13 @@ public sealed class UniversalCompanyScraper
     private async Task<List<JobVacancy>> ScrapeWorkableJobsAsync(
         string companyName, string workableId, CancellationToken cancellationToken)
     {
-        // TODO: Implement Workable API scraper
-        _logger.LogWarning("Workable scraper not yet implemented for {Company}", companyName);
-        return [];
+        return await _workableScraper.ScrapeCompanyJobsAsync(companyName, workableId, cancellationToken);
     }
 
     private async Task<List<JobVacancy>> ScrapeAshbyJobsAsync(
         string companyName, string ashbyId, CancellationToken cancellationToken)
     {
-        // TODO: Implement Ashby API scraper
-        _logger.LogWarning("Ashby scraper not yet implemented for {Company}", companyName);
-        return [];
+        return await _ashbyScraper.ScrapeCompanyJobsAsync(companyName, ashbyId, cancellationToken);
     }
 
     private async Task<List<JobVacancy>> ScrapeGenericCareersPageAsync(
