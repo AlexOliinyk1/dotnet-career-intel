@@ -1,0 +1,50 @@
+@inherits LayoutComponentBase
+
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg-primary);">
+    @Body
+</div>
+
+<style>
+    .login-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 1rem;
+    }
+    .login-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 2rem;
+        width: 100%;
+        max-width: 380px;
+    }
+    .login-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 1rem;
+        justify-content: center;
+    }
+    .login-subtitle {
+        text-align: center;
+        color: var(--text-secondary);
+        margin-bottom: 1.5rem;
+        font-size: 14px;
+    }
+    .login-error {
+        background: #7f1d1d;
+        color: var(--red);
+        padding: 8px 12px;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 13px;
+    }
+    .login-footer {
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 12px;
+        margin-top: 1.5rem;
+    }
+</style>

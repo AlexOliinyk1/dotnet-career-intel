@@ -1,6 +1,9 @@
 @page "/resume/simulator"
+@using CareerIntel.Matching
+@using CareerIntel.Resume
 @inject VacancyRepository VacancyRepo
 @inject DataDirectoryConfig DataDir
+@inject ResumeSimulator SimulatorEngine
 
 <div class="page-header">
     <h1 class="page-title">Resume Simulator</h1>
@@ -9,6 +12,13 @@
 
 <LoadingSpinner Loading="@_loadingVacancies" Message="Loading vacancies..." />
 
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="card" style="border-left: 3px solid var(--color-red, #e74c3c); margin-bottom: 1rem;">
+        <strong style="color: var(--color-red, #e74c3c);">Error:</strong> @_errorMessage
+    </div>
+}
+
 @if (!_loadingVacancies)
 {
     <div class="card">
@@ -16,7 +26,7 @@
         <div class="form-group">
             <label>Paste Your Resume Text</label>
             <textarea @bind="_resumeText" rows="12"
-                      placeholder="Paste your resume content here (plain text)..."
+                      placeholder="Paste your resume content here (plain text or markdown)..."
                       style="width: 100%; padding: 0.75rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit; font-family: inherit; resize: vertical;">
             </textarea>
         </div>
@@ -35,42 +45,60 @@
         </div>
         <div style="margin-top: 1rem;">
             <button class="btn btn-primary" @onclick="RunSimulation"
-                    disabled="@(string.IsNullOrWhiteSpace(_resumeText) || string.IsNullOrEmpty(_selectedVacancyId))">
-                Run Simulation
+                    disabled="@(string.IsNullOrWhiteSpace(_resumeText) || string.IsNullOrEmpty(_selectedVacancyId) || _running)">
+                @if (_running)
+                {
+                    <span>Running Simulation...</span>
+                }
+                else
+                {
+                    <span>Run Simulation</span>
+                }
             </button>
         </div>
     </div>
 
-    @if (_simulationRun)
+    @if (_simulationRun && _simulation is not null)
     {
         <div class="card-grid" style="margin-top: 1.5rem;">
-            <StatCard Label="ATS Score" Value="@($"{_atsScore}%")"
-                      Sub="@GetScoreLabel(_atsScore)"
-                      CssClass="@GetScoreCss(_atsScore)" />
-            <StatCard Label="Recruiter Score" Value="@($"{_recruiterScore}%")"
-                      Sub="@GetScoreLabel(_recruiterScore)"
-                      CssClass="@GetScoreCss(_recruiterScore)" />
-            <StatCard Label="Tech Lead Score" Value="@($"{_techLeadScore}%")"
-                      Sub="@GetScoreLabel(_techLeadScore)"
-                      CssClass="@GetScoreCss(_techLeadScore)" />
-            <StatCard Label="Overall" Value="@($"{_overallScore}%")"
-                      Sub="Weighted average"
-                      CssClass="@GetScoreCss(_overallScore)" />
+            <StatCard Label="ATS Score" Value="@($"{(int)_simulation.AtsScore.Score}%")"
+                      Sub="@(_simulation.AtsScore.PassesFilter ? "Passes ATS filter" : "BLOCKED by ATS")"
+                      CssClass="@GetScoreCss((int)_simulation.AtsScore.Score)" />
+            <StatCard Label="Recruiter Score" Value="@($"{(int)_simulation.RecruiterScore.Score}%")"
+                      Sub="@($"{_simulation.RecruiterScore.ReadTimeSeconds:F1}s read time")"
+                      CssClass="@GetScoreCss((int)_simulation.RecruiterScore.Score)" />
+            <StatCard Label="Tech Lead Score" Value="@($"{(int)_simulation.TechLeadScore.Score}%")"
+                      Sub="@($"{_simulation.TechLeadScore.DepthPercent:F0}% depth")"
+                      CssClass="@GetScoreCss((int)_simulation.TechLeadScore.Score)" />
+            <StatCard Label="Conversion" Value="@($"{_simulation.OverallConversionProbability:P0}")"
+                      Sub="interview probability"
+                      CssClass="@GetScoreCss((int)(_simulation.OverallConversionProbability * 100))" />
         </div>
 
+        @* ── ATS Details ────────────────────────────────────────────── *@
         <div class="card-grid" style="margin-top: 1.5rem;">
             <div class="card">
-                <h3 class="card-title">Keyword Matches</h3>
-                @if (_matchedKeywords.Count > 0)
+                <h3 class="card-title">ATS: Keyword Matches</h3>
+                @{
+                    var ats = _simulation.AtsScore;
+                    var allKeywords = _selectedVacancy!.RequiredSkills
+                        .Concat(_selectedVacancy.PreferredSkills)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    var matchedKeywords = allKeywords
+                        .Where(k => !ats.MissingKeywords.Contains(k, StringComparer.OrdinalIgnoreCase))
+                        .ToList();
+                }
+                @if (matchedKeywords.Count > 0)
                 {
                     <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
-                        @foreach (var keyword in _matchedKeywords)
+                        @foreach (var keyword in matchedKeywords)
                         {
                             <StatusBadge Text="@keyword" Color="green" />
                         }
                     </div>
                     <p class="text-muted" style="margin-top: 0.75rem;">
-                        @_matchedKeywords.Count of @_totalKeywords keywords found in your resume
+                        @matchedKeywords.Count of @allKeywords.Count keywords found (@($"{ats.KeywordMatchPercent:F0}%") match)
                     </p>
                 }
                 else
@@ -80,11 +108,11 @@
             </div>
 
             <div class="card">
-                <h3 class="card-title">Missing Keywords</h3>
-                @if (_missingKeywords.Count > 0)
+                <h3 class="card-title">ATS: Missing Keywords</h3>
+                @if (ats.MissingKeywords.Count > 0)
                 {
                     <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
-                        @foreach (var keyword in _missingKeywords)
+                        @foreach (var keyword in ats.MissingKeywords)
                         {
                             <StatusBadge Text="@keyword" Color="red" />
                         }
@@ -100,45 +128,167 @@
             </div>
         </div>
 
+        @if (ats.FormatIssues.Count > 0)
+        {
+            <div class="card" style="margin-top: 1rem;">
+                <h3 class="card-title">ATS: Format Issues</h3>
+                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                    @foreach (var issue in ats.FormatIssues)
+                    {
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                            <StatusBadge Text="Warning" Color="yellow" />
+                            <span>@issue</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ── Recruiter Heatmap ──────────────────────────────────────── *@
         <div class="card" style="margin-top: 1.5rem;">
-            <h2 class="card-title">Detailed Analysis</h2>
+            <h2 class="card-title">Recruiter Eye-Tracking Heatmap</h2>
+            <p class="text-muted" style="margin-bottom: 0.75rem;">
+                First impression: @_simulation.RecruiterScore.FirstImpression
+            </p>
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Criterion</th>
-                        <th>Score</th>
-                        <th>Assessment</th>
+                        <th>Section</th>
+                        <th>Attention</th>
                         <th>Recommendation</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var criterion in _detailedScores)
+                    @foreach (var entry in _simulation.RecruiterScore.Heatmap)
                     {
                         <tr>
-                            <td><strong>@criterion.Name</strong></td>
+                            <td><strong>@entry.Section</strong></td>
                             <td>
-                                <span class="@GetScoreCss(criterion.Score)">@criterion.Score%</span>
+                                <StatusBadge Text="@entry.Attention"
+                                             Color="@GetAttentionColor(entry.Attention)" />
                             </td>
-                            <td>
-                                <StatusBadge Text="@GetScoreLabel(criterion.Score)"
-                                             Color="@GetScoreBadgeColor(criterion.Score)" />
-                            </td>
-                            <td>@criterion.Recommendation</td>
+                            <td>@entry.Recommendation</td>
                         </tr>
                     }
                 </tbody>
             </table>
+
+            @if (_simulation.RecruiterScore.Concerns.Count > 0)
+            {
+                <h4 class="section-title" style="margin-top: 1rem;">Recruiter Concerns</h4>
+                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                    @foreach (var concern in _simulation.RecruiterScore.Concerns)
+                    {
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                            <StatusBadge Text="Concern" Color="orange" />
+                            <span>@concern</span>
+                        </div>
+                    }
+                </div>
+            }
         </div>
 
+        @* ── Tech Lead Deep-Dive ───────────────────────────────────── *@
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Tech Lead Evaluation</h2>
+            <div class="card-grid" style="margin-bottom: 1rem;">
+                <StatCard Label="Technical Depth" Value="@($"{_simulation.TechLeadScore.DepthPercent:F0}%")"
+                          Sub="depth vs. surface signals"
+                          CssClass="@GetScoreCss((int)_simulation.TechLeadScore.DepthPercent)" />
+                <StatCard Label="Impressive Points" Value="@_simulation.TechLeadScore.ImpressivePoints.Count.ToString()"
+                          Sub="technical highlights" CssClass="text-green" />
+                <StatCard Label="Red Flags" Value="@_simulation.TechLeadScore.RedFlags.Count.ToString()"
+                          Sub="concerns raised" CssClass="@(_simulation.TechLeadScore.RedFlags.Count > 0 ? "text-red" : "text-green")" />
+            </div>
+
+            @if (_simulation.TechLeadScore.ImpressivePoints.Count > 0)
+            {
+                <h4 class="section-title">What Impressed the Tech Lead</h4>
+                <div style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem;">
+                    @foreach (var point in _simulation.TechLeadScore.ImpressivePoints)
+                    {
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                            <StatusBadge Text="+" Color="green" />
+                            <span>@point</span>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_simulation.TechLeadScore.RedFlags.Count > 0)
+            {
+                <h4 class="section-title">Red Flags</h4>
+                <div style="display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem;">
+                    @foreach (var flag in _simulation.TechLeadScore.RedFlags)
+                    {
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                            <StatusBadge Text="!" Color="red" />
+                            <span>@flag</span>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_simulation.TechLeadScore.QuestionsWouldAsk.Count > 0)
+            {
+                <h4 class="section-title">Questions a Tech Lead Would Ask</h4>
+                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                    @foreach (var question in _simulation.TechLeadScore.QuestionsWouldAsk)
+                    {
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                            <StatusBadge Text="?" Color="cyan" />
+                            <span>@question</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @* ── Critical Issues & Recommendations ────────────────────── *@
+        @if (_simulation.CriticalIssues.Count > 0)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h2 class="card-title">Critical Issues</h2>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    @foreach (var issue in _simulation.CriticalIssues)
+                    {
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                            <StatusBadge Text="Issue" Color="red" />
+                            <span>@issue</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (_simulation.Recommendations.Count > 0)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h2 class="card-title">Recommendations</h2>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    @foreach (var rec in _simulation.Recommendations)
+                    {
+                        <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                            <StatusBadge Text="Fix" Color="cyan" />
+                            <span>@rec</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ── Resume Statistics ─────────────────────────────────────── *@
         <div class="card" style="margin-top: 1.5rem;">
             <h2 class="card-title">Resume Statistics</h2>
             <div class="card-grid">
                 <StatCard Label="Word Count" Value="@_wordCount.ToString("N0")" Sub="@GetWordCountAdvice()" />
-                <StatCard Label="Sentences" Value="@_sentenceCount.ToString("N0")" Sub="detected in text" />
-                <StatCard Label="Skill Keywords" Value="@_matchedKeywords.Count.ToString()"
-                          Sub="@($"of {_totalKeywords} required")" CssClass="text-cyan" />
-                <StatCard Label="Action Verbs" Value="@_actionVerbCount.ToString()"
-                          Sub="found in bullets" CssClass="text-green" />
+                <StatCard Label="ATS Pass" Value="@(_simulation.AtsScore.PassesFilter ? "Yes" : "No")"
+                          Sub="@(_simulation.AtsScore.PassesFilter ? "resume will be reviewed" : "resume may be filtered out")"
+                          CssClass="@(_simulation.AtsScore.PassesFilter ? "text-green" : "text-red")" />
+                <StatCard Label="Keywords Matched" Value="@matchedKeywords.Count.ToString()"
+                          Sub="@($"of {allKeywords.Count} required")" CssClass="text-cyan" />
+                <StatCard Label="Read Time" Value="@($"{_simulation.RecruiterScore.ReadTimeSeconds:F1}s")"
+                          Sub="recruiter scan time" CssClass="text-green" />
             </div>
         </div>
     }
@@ -172,226 +322,109 @@
 
 @code {
     private bool _loadingVacancies = true;
+    private bool _running;
     private List<JobVacancy> _vacancies = [];
     private string _selectedVacancyId = "";
+    private JobVacancy? _selectedVacancy;
     private string _resumeText = "";
     private bool _simulationRun;
+    private string _errorMessage = "";
 
-    // Scores
-    private int _atsScore;
-    private int _recruiterScore;
-    private int _techLeadScore;
-    private int _overallScore;
+    // Simulation result from engine
+    private ResumeSimulation? _simulation;
 
-    // Keywords
-    private List<string> _matchedKeywords = [];
-    private List<string> _missingKeywords = [];
-    private int _totalKeywords;
+    // User profile for tech lead simulation
+    private UserProfile? _userProfile;
 
     // Stats
     private int _wordCount;
-    private int _sentenceCount;
-    private int _actionVerbCount;
-
-    // Detailed
-    private List<ScoreCriterion> _detailedScores = [];
 
     protected override async Task OnInitializedAsync()
     {
-        _vacancies = (await VacancyRepo.GetVacanciesAsync())
-            .OrderByDescending(v => v.ScrapedDate)
-            .Take(50)
-            .ToList();
+        try
+        {
+            // Load user profile for tech lead simulation context
+            await LoadUserProfile();
 
-        _loadingVacancies = false;
+            _vacancies = (await VacancyRepo.GetVacanciesAsync())
+                .OrderByDescending(v => v.ScrapedDate)
+                .Take(50)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load data: {ex.Message}";
+        }
+        finally
+        {
+            _loadingVacancies = false;
+        }
+    }
+
+    private async Task LoadUserProfile()
+    {
+        var profilePath = Path.Combine(DataDir.Path, "my-profile.json");
+        if (!File.Exists(profilePath)) return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(profilePath);
+            _userProfile = JsonSerializer.Deserialize<UserProfile>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch
+        {
+            // Profile malformed - will use fallback
+        }
     }
 
     private void RunSimulation()
     {
-        var vacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
-        if (vacancy is null || string.IsNullOrWhiteSpace(_resumeText))
+        _errorMessage = "";
+        _selectedVacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
+        if (_selectedVacancy is null || string.IsNullOrWhiteSpace(_resumeText))
             return;
 
-        var resumeLower = _resumeText.ToLowerInvariant();
-        var allKeywords = vacancy.RequiredSkills
-            .Concat(vacancy.PreferredSkills)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        _running = true;
 
-        _totalKeywords = allKeywords.Count;
-
-        _matchedKeywords = allKeywords
-            .Where(k => resumeLower.Contains(k.ToLowerInvariant()))
-            .ToList();
-
-        _missingKeywords = allKeywords
-            .Where(k => !resumeLower.Contains(k.ToLowerInvariant()))
-            .ToList();
-
-        // Calculate text stats
-        var words = _resumeText.Split([' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries);
-        _wordCount = words.Length;
-        _sentenceCount = _resumeText.Count(c => c is '.' or '!' or '?');
-
-        var actionVerbs = new[] { "built", "designed", "implemented", "led", "managed", "developed", "created",
-            "optimized", "architected", "deployed", "delivered", "improved", "reduced", "increased", "launched",
-            "migrated", "automated", "refactored", "mentored", "collaborated", "integrated", "scaled" };
-        _actionVerbCount = actionVerbs.Count(v => resumeLower.Contains(v));
-
-        // Calculate scores
-        var keywordCoverage = _totalKeywords > 0 ? (double)_matchedKeywords.Count / _totalKeywords : 0;
-
-        // ATS Score: keyword matching + formatting
-        _atsScore = CalculateAtsScore(keywordCoverage);
-
-        // Recruiter Score: clarity + relevance
-        _recruiterScore = CalculateRecruiterScore(keywordCoverage);
-
-        // Tech Lead Score: technical depth
-        _techLeadScore = CalculateTechLeadScore(keywordCoverage, vacancy);
-
-        // Overall: weighted average (ATS 40%, Recruiter 30%, Tech Lead 30%)
-        _overallScore = (int)(_atsScore * 0.4 + _recruiterScore * 0.3 + _techLeadScore * 0.3);
-
-        // Detailed scores
-        _detailedScores = GenerateDetailedScores(vacancy, keywordCoverage);
-
-        _simulationRun = true;
-    }
-
-    private int CalculateAtsScore(double keywordCoverage)
-    {
-        var score = (int)(keywordCoverage * 70);
-
-        // Bonus for good length
-        if (_wordCount is >= 400 and <= 800)
-            score += 15;
-        else if (_wordCount is >= 300 and <= 1000)
-            score += 10;
-
-        // Bonus for action verbs
-        score += Math.Min(_actionVerbCount * 2, 15);
-
-        return Math.Min(score, 100);
-    }
-
-    private int CalculateRecruiterScore(double keywordCoverage)
-    {
-        var score = (int)(keywordCoverage * 50);
-
-        // Clarity: penalize very long or very short
-        if (_wordCount is >= 350 and <= 700)
-            score += 20;
-        else if (_wordCount is >= 200 and <= 900)
-            score += 10;
-
-        // Action verbs signal achievement-oriented writing
-        score += Math.Min(_actionVerbCount * 3, 20);
-
-        // Sentence count indicates structure
-        if (_sentenceCount is >= 15 and <= 40)
-            score += 10;
-
-        return Math.Min(score, 100);
-    }
-
-    private int CalculateTechLeadScore(double keywordCoverage, JobVacancy vacancy)
-    {
-        var score = (int)(keywordCoverage * 40);
-        var resumeLower = _resumeText.ToLowerInvariant();
-
-        // Technical depth indicators
-        var depthKeywords = new[] { "architecture", "scalab", "performance", "distributed", "microservice",
-            "cache", "database", "optimization", "concurrency", "async", "design pattern",
-            "ci/cd", "monitoring", "logging", "security", "testing" };
-        var depthCount = depthKeywords.Count(k => resumeLower.Contains(k));
-        score += Math.Min(depthCount * 4, 30);
-
-        // Quantified achievements
-        var hasNumbers = System.Text.RegularExpressions.Regex.IsMatch(_resumeText, @"\d+[%xX]|\d+K|\d+k");
-        if (hasNumbers)
-            score += 15;
-
-        // Seniority alignment
-        if (vacancy.SeniorityLevel >= SeniorityLevel.Senior && resumeLower.Contains("senior"))
-            score += 10;
-        if (resumeLower.Contains("mentor") || resumeLower.Contains("lead"))
-            score += 5;
-
-        return Math.Min(score, 100);
-    }
-
-    private List<ScoreCriterion> GenerateDetailedScores(JobVacancy vacancy, double keywordCoverage)
-    {
-        return
-        [
-            new()
-            {
-                Name = "Keyword Coverage",
-                Score = (int)(keywordCoverage * 100),
-                Recommendation = keywordCoverage >= 0.8
-                    ? "Excellent keyword coverage. Your resume matches most required skills."
-                    : $"Add missing keywords: {string.Join(", ", _missingKeywords.Take(5))}"
-            },
-            new()
-            {
-                Name = "Resume Length",
-                Score = _wordCount switch
-                {
-                    >= 400 and <= 700 => 95,
-                    >= 300 and <= 900 => 75,
-                    >= 200 and <= 1200 => 55,
-                    _ => 30
-                },
-                Recommendation = _wordCount < 300
-                    ? "Resume is too short. Add more detail about your experience and achievements."
-                    : _wordCount > 900
-                        ? "Resume may be too long. Focus on the most relevant experience for this role."
-                        : "Good resume length for a single-page format."
-            },
-            new()
-            {
-                Name = "Action Verbs",
-                Score = Math.Min(_actionVerbCount * 10, 100),
-                Recommendation = _actionVerbCount < 5
-                    ? "Use more action verbs (built, designed, implemented, optimized, led) to describe achievements."
-                    : "Good use of action verbs. Your resume communicates achievement effectively."
-            },
-            new()
-            {
-                Name = "Quantified Achievements",
-                Score = System.Text.RegularExpressions.Regex.IsMatch(_resumeText, @"\d+[%xX]|\d+K|\d+k") ? 85 : 25,
-                Recommendation = "Include numbers and metrics (e.g., \"reduced latency by 40%\", \"served 10K requests/sec\")."
-            },
-            new()
-            {
-                Name = "Seniority Alignment",
-                Score = GetSeniorityAlignmentScore(vacancy),
-                Recommendation = $"Ensure your resume reflects {vacancy.SeniorityLevel}-level experience and responsibilities."
-            }
-        ];
-    }
-
-    private int GetSeniorityAlignmentScore(JobVacancy vacancy)
-    {
-        var resumeLower = _resumeText.ToLowerInvariant();
-        var score = 50;
-
-        if (vacancy.SeniorityLevel >= SeniorityLevel.Senior)
+        try
         {
-            if (resumeLower.Contains("senior")) score += 15;
-            if (resumeLower.Contains("architect")) score += 10;
-            if (resumeLower.Contains("lead") || resumeLower.Contains("mentor")) score += 10;
-            if (resumeLower.Contains("design") && resumeLower.Contains("system")) score += 10;
-        }
-        else
-        {
-            if (resumeLower.Contains("project")) score += 15;
-            if (resumeLower.Contains("collaborat")) score += 10;
-            if (resumeLower.Contains("learn")) score += 10;
-        }
+            var profile = _userProfile ?? BuildFallbackProfile();
 
-        return Math.Min(score, 100);
+            // Calculate basic stats
+            _wordCount = _resumeText.Split([' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries).Length;
+
+            // Run the full three-reader simulation via the engine
+            _simulation = SimulatorEngine.Simulate(_resumeText, _selectedVacancy, profile);
+
+            _simulationRun = true;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Simulation failed: {ex.Message}";
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private UserProfile BuildFallbackProfile()
+    {
+        return new UserProfile
+        {
+            Personal = new PersonalInfo
+            {
+                Name = "Software Engineer",
+                Title = "Senior .NET Developer",
+                Summary = "Experienced .NET developer."
+            },
+            Skills = new List<string> { "C#", ".NET", "ASP.NET Core", "Entity Framework", "SQL", "Azure",
+                "Docker", "REST API", "Microservices", "Git" }
+                .Select(s => new SkillProfile { SkillName = s })
+                .ToList(),
+            Experiences = []
+        };
     }
 
     private string GetWordCountAdvice()
@@ -403,15 +436,6 @@
         return "too long";
     }
 
-    private static string GetScoreLabel(int score) => score switch
-    {
-        >= 85 => "Excellent",
-        >= 70 => "Good",
-        >= 50 => "Fair",
-        >= 30 => "Needs Work",
-        _ => "Poor"
-    };
-
     private static string GetScoreCss(int score) => score switch
     {
         >= 70 => "text-green",
@@ -420,18 +444,12 @@
         _ => "text-red"
     };
 
-    private static string GetScoreBadgeColor(int score) => score switch
+    private static string GetAttentionColor(string attention) => attention switch
     {
-        >= 70 => "green",
-        >= 50 => "cyan",
-        >= 30 => "yellow",
-        _ => "red"
+        "High" => "green",
+        "Medium" => "yellow",
+        "Low" => "red",
+        "Skipped" => "gray",
+        _ => "gray"
     };
-
-    private sealed class ScoreCriterion
-    {
-        public string Name { get; set; } = string.Empty;
-        public int Score { get; set; }
-        public string Recommendation { get; set; } = string.Empty;
-    }
 }

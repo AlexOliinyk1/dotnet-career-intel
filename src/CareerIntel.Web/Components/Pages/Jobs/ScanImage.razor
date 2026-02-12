@@ -1,0 +1,346 @@
+@page "/jobs/scan-image"
+@using CareerIntel.Matching
+@inject VacancyImageScanner Scanner
+@inject VacancyRepository VacancyRepo
+@inject DataDirectoryConfig DataDir
+@inject CareerIntel.Web.Services.ToastService Toast
+@rendermode InteractiveServer
+
+<div class="page-header">
+    <h1 class="page-title">Scan Image</h1>
+    <p class="page-subtitle">Upload job post screenshots to extract vacancy data via OCR</p>
+</div>
+
+@* ── Upload Section ── *@
+<div class="card" style="margin-bottom: 1rem;">
+    <h2 class="card-title">Upload Screenshot</h2>
+    <div class="form-row">
+        <div class="form-group" style="flex: 2;">
+            <label>Image File</label>
+            <InputFile OnChange="OnFileSelected" accept=".png,.jpg,.jpeg,.gif,.bmp"
+                       style="padding: 6px 0;" />
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+            <button class="btn btn-primary" @onclick="ScanSelectedImage"
+                    disabled="@(_selectedFile is null || _scanning)">
+                @(_scanning ? "Scanning..." : "Scan Image")
+            </button>
+        </div>
+    </div>
+    @if (_selectedFile is not null)
+    {
+        <p class="text-muted" style="margin-top: 8px; font-size: 12px;">
+            Selected: @_selectedFile.Name (@FormatFileSize(_selectedFile.Size))
+        </p>
+    }
+</div>
+
+@* ── Scanning Progress ── *@
+<LoadingSpinner Loading="@_scanning" Message="Running OCR scan... this may take a moment." />
+
+@* ── Error Display ── *@
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="card" style="margin-bottom: 1rem; border-color: var(--red);">
+        <p style="color: var(--red);">@_errorMessage</p>
+    </div>
+}
+
+@* ── Scan Results ── *@
+@if (_scanResult is not null)
+{
+    @* StatCards *@
+    <div class="card-grid" style="margin-bottom: 1.5rem;">
+        <StatCard Label="OCR Confidence"
+                  Value="@($"{_scanResult.OcrConfidence:F0}%")"
+                  CssClass="@(_scanResult.OcrConfidence >= 70 ? "cyan" : _scanResult.OcrConfidence >= 40 ? "yellow" : "red")" />
+        <StatCard Label="Vacancies Found"
+                  Value="@_scanResult.Vacancies.Count.ToString()"
+                  CssClass="blue" />
+        <StatCard Label="Eligible"
+                  Value="@EligibleCount.ToString()"
+                  CssClass="green" />
+        <StatCard Label="Ineligible"
+                  Value="@IneligibleCount.ToString()"
+                  CssClass="red" />
+    </div>
+
+    @* Warnings *@
+    @if (_scanResult.Warnings.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <h2 class="card-title">Warnings</h2>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                @foreach (var warning in _scanResult.Warnings)
+                {
+                    <StatusBadge Text="@warning" Color="yellow" />
+                }
+            </div>
+        </div>
+    }
+
+    @* Extracted Vacancies Table *@
+    @if (_scanResult.Vacancies.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h2 class="card-title" style="margin-bottom: 0;">Extracted Vacancies</h2>
+                <span class="text-muted">@_scanResult.Vacancies.Count vacancy(ies) from image</span>
+            </div>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Title</th>
+                        <th>Company</th>
+                        <th>Location</th>
+                        <th>Remote Policy</th>
+                        <th>Seniority</th>
+                        <th>Salary</th>
+                        <th>Eligible</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < _scanResult.Vacancies.Count; i++)
+                    {
+                        var vacancy = _scanResult.Vacancies[i];
+                        var assessment = i < _scanResult.Assessments.Count ? _scanResult.Assessments[i] : null;
+                        var index = i;
+
+                        <tr style="cursor: pointer;" @onclick="() => ToggleDetail(index)">
+                            <td style="width: 30px; text-align: center; color: var(--text-muted);">
+                                @(_expandedRows.Contains(index) ? "\u25BC" : "\u25B6")
+                            </td>
+                            <td class="truncate" style="max-width: 240px;">@vacancy.Title</td>
+                            <td>@vacancy.Company</td>
+                            <td>@FormatLocation(vacancy)</td>
+                            <td>
+                                <StatusBadge Text="@vacancy.RemotePolicy.ToString()"
+                                             Color="@StatusBadge.GetColorForStatus(vacancy.RemotePolicy.ToString())" />
+                            </td>
+                            <td>@vacancy.SeniorityLevel</td>
+                            <td class="text-cyan">@FormatSalary(vacancy)</td>
+                            <td>
+                                @if (assessment is not null)
+                                {
+                                    <StatusBadge Text="@(assessment.IsEligible ? "Yes" : "No")"
+                                                 Color="@(assessment.IsEligible ? "green" : "red")" />
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                        </tr>
+
+                        @* Expandable Detail Row *@
+                        @if (_expandedRows.Contains(index))
+                        {
+                            <tr>
+                                <td colspan="8" style="padding: 16px 24px; background: var(--bg-secondary);">
+                                    @if (assessment is not null)
+                                    {
+                                        <h3 class="section-title" style="margin-top: 0;">Eligibility Rules</h3>
+                                        <table class="data-table" style="margin-bottom: 16px;">
+                                            <thead>
+                                                <tr>
+                                                    <th>Rule Name</th>
+                                                    <th>Status</th>
+                                                    <th>Reason</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var rule in assessment.Rules)
+                                                {
+                                                    <tr>
+                                                        <td><strong>@rule.RuleName</strong></td>
+                                                        <td>
+                                                            <StatusBadge Text="@(rule.Passed ? "Passed" : "Failed")"
+                                                                         Color="@(rule.Passed ? "green" : "red")" />
+                                                        </td>
+                                                        <td>@rule.Reason</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+
+                                        <p class="text-muted" style="font-size: 12px; margin-bottom: 8px;">
+                                            @assessment.Summary
+                                        </p>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(_scanResult.RawOcrText))
+                                    {
+                                        <h3 class="section-title">Raw OCR Text</h3>
+                                        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto;">
+                                            <pre style="margin: 0; font-size: 12px; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word;">@TruncateOcrText(_scanResult.RawOcrText, 500)</pre>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* Save Button *@
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <button class="btn btn-primary" @onclick="SaveToDatabase"
+                        disabled="@(_saving || EligibleVacancies.Count == 0)">
+                    @(_saving ? "Saving..." : $"Save to Database ({EligibleVacancies.Count} eligible)")
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <p class="text-muted" style="text-align: center; padding: 2rem;">
+                No vacancies could be extracted from this image. Try a clearer screenshot of a job listing.
+            </p>
+        </div>
+    }
+}
+
+@code {
+    private IBrowserFile? _selectedFile;
+    private ImageScanResult? _scanResult;
+    private bool _scanning;
+    private bool _saving;
+    private string? _errorMessage;
+    private HashSet<int> _expandedRows = [];
+
+    private int EligibleCount => _scanResult?.Assessments.Count(a => a.IsEligible) ?? 0;
+    private int IneligibleCount => _scanResult?.Assessments.Count(a => !a.IsEligible) ?? 0;
+
+    private List<JobVacancy> EligibleVacancies
+    {
+        get
+        {
+            if (_scanResult is null)
+                return [];
+
+            var eligible = new List<JobVacancy>();
+            for (var i = 0; i < _scanResult.Vacancies.Count; i++)
+            {
+                if (i < _scanResult.Assessments.Count && _scanResult.Assessments[i].IsEligible)
+                    eligible.Add(_scanResult.Vacancies[i]);
+            }
+            return eligible;
+        }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        _scanResult = null;
+        _errorMessage = null;
+        _expandedRows.Clear();
+    }
+
+    private async Task ScanSelectedImage()
+    {
+        if (_selectedFile is null)
+            return;
+
+        _scanning = true;
+        _scanResult = null;
+        _errorMessage = null;
+        _expandedRows.Clear();
+
+        try
+        {
+            var tempPath = Path.Combine(Path.GetTempPath(), _selectedFile.Name);
+            await using (var stream = File.Create(tempPath))
+            {
+                await _selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(stream);
+            }
+
+            _scanResult = await Task.Run(() => Scanner.ScanImage(tempPath));
+
+            // Clean up temp file
+            try { File.Delete(tempPath); } catch { /* best effort */ }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message.Contains("Tesseract", StringComparison.OrdinalIgnoreCase)
+                    || ex.Message.Contains("tessdata", StringComparison.OrdinalIgnoreCase)
+                    || ex.Message.Contains("OCR", StringComparison.OrdinalIgnoreCase)
+                ? "OCR scanning failed. Ensure Tesseract OCR is installed."
+                : $"OCR scanning failed. Ensure Tesseract OCR is installed. ({ex.Message})";
+        }
+        finally
+        {
+            _scanning = false;
+        }
+    }
+
+    private async Task SaveToDatabase()
+    {
+        var vacancies = EligibleVacancies;
+        if (vacancies.Count == 0)
+            return;
+
+        _saving = true;
+
+        try
+        {
+            await VacancyRepo.SaveVacanciesAsync(vacancies);
+            Toast.Success($"Saved {vacancies.Count} vacancy(ies) to database");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Save failed: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ToggleDetail(int index)
+    {
+        if (!_expandedRows.Remove(index))
+            _expandedRows.Add(index);
+    }
+
+    private static string FormatLocation(JobVacancy v)
+    {
+        if (!string.IsNullOrEmpty(v.City) && !string.IsNullOrEmpty(v.Country))
+            return $"{v.City}, {v.Country}";
+        if (!string.IsNullOrEmpty(v.Country))
+            return v.Country;
+        if (!string.IsNullOrEmpty(v.City))
+            return v.City;
+        return "-";
+    }
+
+    private static string FormatSalary(JobVacancy v)
+    {
+        if (!v.SalaryMin.HasValue)
+            return "-";
+
+        var currency = v.SalaryCurrency;
+        var min = v.SalaryMin.Value.ToString("N0");
+
+        if (v.SalaryMax.HasValue)
+            return $"{currency} {min} - {v.SalaryMax.Value:N0}";
+
+        return $"{currency} {min}+";
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes} B";
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private static string TruncateOcrText(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength] + "...";
+}

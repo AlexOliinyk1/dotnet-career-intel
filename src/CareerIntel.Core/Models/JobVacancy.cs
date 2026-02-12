@@ -37,6 +37,11 @@ public sealed class JobVacancy
 
     public string SalaryCurrency { get; set; } = "USD";
 
+    /// <summary>
+    /// True if salary values represent hourly rates (e.g. $80/hr) rather than annual salary.
+    /// </summary>
+    public bool IsHourlyRate { get; set; }
+
     public SeniorityLevel SeniorityLevel { get; set; } = SeniorityLevel.Unknown;
 
     /// <summary>

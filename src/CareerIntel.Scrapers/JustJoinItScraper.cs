@@ -144,7 +144,7 @@ public sealed class JustJoinItScraper(HttpClient httpClient, ILogger<JustJoinItS
                         return vacancy;
                     }
                 }
-                catch
+                catch (Exception)
                 {
                     // Try next endpoint
                     continue;

@@ -1,0 +1,281 @@
+@page "/learning/progress"
+@inject LearningProgressTracker Tracker
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Learning Progress</h1>
+    <p class="page-subtitle">Track your readiness across all topics with detailed progress metrics</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading learning progress data..." />
+
+@if (!_loading && _error is not null)
+{
+    <div class="card" style="border-left: 4px solid var(--color-red, #e74c3c);">
+        <h3 class="card-title">Error Loading Data</h3>
+        <p>@_error</p>
+        <p class="text-muted">Make sure <code>learning-progress.json</code> exists in your data directory.</p>
+    </div>
+}
+
+@if (!_loading && _error is null && !_hasData)
+{
+    <div class="card">
+        <h3 class="card-title">No Learning Data Yet</h3>
+        <p>You haven't recorded any study progress yet. Start learning to see your progress here.</p>
+        <ul style="margin: 0.75rem 0; padding-left: 1.5rem;">
+            <li>Use the CLI <code>micro-learn</code> command to begin studying topics</li>
+            <li>Take quizzes and record your confidence to build a progress profile</li>
+            <li>Your study streak, quiz accuracy, and topic coverage will appear here</li>
+        </ul>
+        <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+            <a href="/learning/micro" class="btn btn-primary">Start Micro Learning</a>
+            <a href="/learning/resources" class="btn">Browse Topic Bank</a>
+        </div>
+    </div>
+}
+
+@if (!_loading && _error is null && _hasData)
+{
+    <div class="card-grid">
+        <StatCard Label="Overall Readiness" Value="@($"{_readiness.OverallScore:F0}%")"
+                  Sub="@_readiness.Verdict"
+                  CssClass="@GetReadinessCss(_readiness.OverallScore)" />
+        <StatCard Label="Verdict" Value="@_readiness.Verdict"
+                  Sub="weighted assessment"
+                  CssClass="@GetVerdictCss(_readiness.Verdict)" />
+        <StatCard Label="Total Study Time" Value="@($"{_progress!.TotalStudyMinutes} min")"
+                  Sub="@($"{_progress.TotalStudyMinutes / 60.0:F1} hours")" CssClass="text-cyan" />
+        <StatCard Label="Questions Studied" Value="@_progress.TotalQuestionsStudied.ToString("N0")"
+                  Sub="across all topics" />
+        <StatCard Label="Quizzes Taken" Value="@_progress.TotalQuizzesTaken.ToString("N0")"
+                  Sub="quiz attempts recorded" CssClass="text-green" />
+        <StatCard Label="Current Streak" Value="@($"{_progress.CurrentStreak} days")"
+                  Sub="@($"longest: {_progress.LongestStreak} days")" CssClass="text-yellow" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Readiness by Topic</h2>
+        @if (_readiness.ByTopic.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Topic Name</th>
+                        <th>Score</th>
+                        <th>Status</th>
+                        <th>Questions Studied</th>
+                        <th>Quiz Accuracy</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var topic in _readiness.ByTopic.OrderByDescending(t => t.Score))
+                    {
+                        var tp = GetTopicProgress(topic.TopicId);
+                        <tr>
+                            <td><strong>@topic.TopicName</strong></td>
+                            <td>
+                                <span class="@GetScoreCss(topic.Score)">@($"{topic.Score:F0}%")</span>
+                            </td>
+                            <td>
+                                <StatusBadge Text="@topic.Status"
+                                             Color="@GetStatusColor(topic.Status)" />
+                            </td>
+                            <td>
+                                @if (tp is not null)
+                                {
+                                    @($"{tp.QuestionsStudied}/{tp.TotalQuestionsAvailable}")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                            <td>
+                                @if (tp is not null && tp.QuizAttempts > 0)
+                                {
+                                    <span class="@GetScoreCss(tp.QuizAccuracy)">@($"{tp.QuizAccuracy:F0}%")</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">N/A</span>
+                                }
+                            </td>
+                            <td>
+                                @if (tp is not null && tp.SelfConfidence > 0)
+                                {
+                                    <span class="@GetConfidenceCss(tp.SelfConfidence)">@tp.SelfConfidence/5</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">N/A</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No topic readiness data available yet.</p>
+        }
+    </div>
+
+    @if (_readiness.CriticalGaps.Count > 0)
+    {
+        <div class="card" style="margin-top: 1.5rem; border-left: 4px solid var(--color-red, #e74c3c);">
+            <h2 class="card-title">Critical Gaps</h2>
+            <p class="text-muted">Topics scoring below 30% that need urgent attention</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem;">
+                @foreach (var gap in _readiness.CriticalGaps)
+                {
+                    <span class="badge badge-red">@gap</span>
+                }
+            </div>
+        </div>
+    }
+
+    @if (_recentStudyLog.Count > 0)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Study Log</h2>
+            <p class="text-muted">Last 20 study activities</p>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Topic</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in _recentStudyLog)
+                    {
+                        <tr>
+                            <td class="text-muted">@entry.Date.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@ResolveTopicName(entry.TopicId)</td>
+                            <td>
+                                <StatusBadge Text="@entry.Action"
+                                             Color="@GetActionColor(entry.Action)" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+        <a href="/learning/micro" class="btn btn-primary">Micro Learning</a>
+        <a href="/learning/adaptive" class="btn">Adaptive Plan</a>
+        <a href="/learning/resources" class="btn">Browse Topic Bank</a>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private bool _hasData;
+
+    private LearningProgress? _progress;
+    private ReadinessAssessment _readiness = new(0, [], "Not Ready", []);
+    private List<StudyLogEntry> _recentStudyLog = [];
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            _progress = Tracker.LoadProgress(DataDir.Path);
+
+            _hasData = _progress.TopicProgress.Count > 0
+                       || _progress.TotalQuestionsStudied > 0
+                       || _progress.StudyLog.Count > 0;
+
+            if (_hasData)
+            {
+                _readiness = Tracker.AssessReadiness(_progress);
+
+                _recentStudyLog = _progress.StudyLog
+                    .OrderByDescending(e => e.Date)
+                    .Take(20)
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load learning progress: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private TopicProgress? GetTopicProgress(string topicId)
+    {
+        if (_progress is null) return null;
+        _progress.TopicProgress.TryGetValue(topicId, out var tp);
+        return tp;
+    }
+
+    private string ResolveTopicName(string topicId)
+    {
+        if (_progress is not null && _progress.TopicProgress.TryGetValue(topicId, out var tp))
+        {
+            return tp.TopicName;
+        }
+
+        return topicId;
+    }
+
+    private static string GetReadinessCss(double score) => score switch
+    {
+        >= 70 => "text-green",
+        >= 50 => "text-cyan",
+        >= 30 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetVerdictCss(string verdict) => verdict switch
+    {
+        "Well Prepared" => "text-green",
+        "Ready" => "text-cyan",
+        "Almost Ready" => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetScoreCss(double score) => score switch
+    {
+        >= 75 => "text-green",
+        >= 50 => "text-cyan",
+        >= 25 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetConfidenceCss(int confidence) => confidence switch
+    {
+        >= 4 => "text-green",
+        3 => "text-cyan",
+        2 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetStatusColor(string status) => status switch
+    {
+        "Strong" => "green",
+        "Good" => "cyan",
+        "Developing" => "yellow",
+        "Weak" => "red",
+        _ => "gray"
+    };
+
+    private static string GetActionColor(string action) => action.ToLowerInvariant() switch
+    {
+        "studied" => "cyan",
+        "quiz" => "green",
+        "confidence-update" => "yellow",
+        _ => "gray"
+    };
+}

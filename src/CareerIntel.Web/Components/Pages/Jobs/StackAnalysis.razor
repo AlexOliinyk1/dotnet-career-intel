@@ -1,0 +1,170 @@
+@page "/jobs/stack-analysis"
+@inject VacancyRepository VacancyRepo
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Stack Analysis</h1>
+    <p class="page-subtitle">Compare .NET to alternative stacks and analyze skill demand across scraped vacancies</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing tech stacks..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Total Vacancies Analyzed" Value="@_allVacancies.Count.ToString("N0")" />
+        <StatCard Label="Unique Skills Found" Value="@_skillFrequency.Count.ToString("N0")" />
+        <StatCard Label="Top Skill"
+                  Value="@(_skillFrequency.Count > 0 ? _skillFrequency.First().Key : "N/A")"
+                  Sub="@(_skillFrequency.Count > 0 ? $"{_skillFrequency.First().Value} mentions" : "")"
+                  CssClass="cyan" />
+        <StatCard Label=".NET Jobs %"
+                  Value="@($"{DotNetPercent:F0}%")"
+                  Sub="@($"{_dotNetCount} vacancies")"
+                  CssClass="green" />
+    </div>
+
+    @if (_skillFrequency.Count > 0)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Skill Demand (Top 20)</h2>
+            <BarChart Data="@_top20Skills" />
+        </div>
+    }
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Stack Comparison - Alternatives to .NET</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Stack</th>
+                    <th>Similarity to .NET</th>
+                    <th>Remote Job Market</th>
+                    <th>Avg Salary Range</th>
+                    <th>Learning Curve</th>
+                    <th>Recommendation</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var stack in _stackComparisons)
+                {
+                    <tr>
+                        <td><strong>@stack.Name</strong></td>
+                        <td class="text-cyan">@stack.Similarity</td>
+                        <td>@stack.RemoteMarket</td>
+                        <td class="text-green">@stack.SalaryRange</td>
+                        <td>
+                            <StatusBadge Text="@stack.LearningCurve"
+                                         Color="@GetLearningCurveColor(stack.LearningCurve)" />
+                        </td>
+                        <td class="text-muted">@stack.Recommendation</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">.NET Strengths</h2>
+        <div class="flex flex-wrap gap-4" style="margin-top: 0.5rem;">
+            @foreach (var strength in _dotNetStrengths)
+            {
+                <span class="badge badge-cyan">@strength</span>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<JobVacancy> _allVacancies = [];
+    private Dictionary<string, int> _skillFrequency = [];
+    private Dictionary<string, int> _top20Skills = [];
+    private int _dotNetCount;
+
+    private double DotNetPercent => _allVacancies.Count > 0
+        ? _dotNetCount * 100.0 / _allVacancies.Count
+        : 0;
+
+    private readonly string[] _dotNetStrengths =
+    [
+        "Enterprise Backend",
+        "High Salary $100K-$180K",
+        "Azure Cloud",
+        "Blazor Full-Stack",
+        "Strong Typing",
+        "Cross-Platform"
+    ];
+
+    private readonly List<StackComparison> _stackComparisons =
+    [
+        new("TypeScript/Node.js", "95%", "Very High", "$90K-$170K", "Easy", "Best for remote"),
+        new("Go", "85%", "High", "$100K-$180K", "Medium", "Best for cloud"),
+        new("Java/Spring", "90%", "Very High", "$95K-$175K", "Easy", "Enterprise"),
+        new("Python/Django", "70%", "Very High", "$85K-$160K", "Easy", "ML/Data"),
+        new("Rust", "60%", "Medium", "$110K-$190K", "Hard", "Systems")
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allVacancies = await VacancyRepo.GetVacanciesAsync();
+
+        // Build skill frequency from RequiredSkills + PreferredSkills
+        var skillCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var vacancy in _allVacancies)
+        {
+            var allSkills = vacancy.RequiredSkills
+                .Concat(vacancy.PreferredSkills)
+                .Where(s => !string.IsNullOrWhiteSpace(s));
+
+            foreach (var skill in allSkills)
+            {
+                var normalized = skill.Trim();
+                if (skillCounts.ContainsKey(normalized))
+                    skillCounts[normalized]++;
+                else
+                    skillCounts[normalized] = 1;
+            }
+        }
+
+        _skillFrequency = skillCounts
+            .OrderByDescending(kv => kv.Value)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        _top20Skills = _skillFrequency
+            .Take(20)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        // Count .NET-related vacancies
+        var dotNetKeywords = new[] { ".net", "c#", "asp.net", "dotnet", "csharp" };
+        _dotNetCount = _allVacancies.Count(v =>
+        {
+            var allSkills = v.RequiredSkills.Concat(v.PreferredSkills)
+                .Select(s => s.ToLowerInvariant());
+            var titleLower = v.Title.ToLowerInvariant();
+            var descLower = v.Description.ToLowerInvariant();
+
+            return allSkills.Any(s => dotNetKeywords.Any(k => s.Contains(k)))
+                || dotNetKeywords.Any(k => titleLower.Contains(k))
+                || dotNetKeywords.Any(k => descLower.Contains(k));
+        });
+
+        _loading = false;
+    }
+
+    private static string GetLearningCurveColor(string curve) => curve switch
+    {
+        "Easy" => "green",
+        "Medium" => "yellow",
+        "Hard" => "red",
+        _ => "gray"
+    };
+
+    private sealed record StackComparison(
+        string Name,
+        string Similarity,
+        string RemoteMarket,
+        string SalaryRange,
+        string LearningCurve,
+        string Recommendation);
+}

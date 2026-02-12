@@ -1,0 +1,658 @@
+@page "/resume/review"
+@using CareerIntel.Intelligence
+@using CareerIntel.Matching
+@using CareerIntel.Resume
+@inject DataDirectoryConfig DataDir
+@inject VacancyRepository VacancyRepo
+@inject AtsTailorer AtsTailorerEngine
+@inject ResumeDiffTracker DiffTrackerEngine
+@inject CareerIntel.Resume.ResumeBuilder ResumeBuilderEngine
+
+<div class="page-header">
+    <h1 class="page-title">Resume Review & Career Pivot</h1>
+    <p class="page-subtitle">AI-powered resume analysis with ATS optimization, diff tracking, and career pivot recommendations</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing your resume..." />
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="card" style="border-left: 3px solid var(--color-red, #e74c3c); margin-bottom: 1rem;">
+        <strong style="color: var(--color-red, #e74c3c);">Error:</strong> @_errorMessage
+    </div>
+}
+
+@if (!_loading && _report is not null)
+{
+    <div class="card-grid">
+        <StatCard Label="Overall Score" Value="@($"{_report.OverallScore}/100")"
+                  Sub="resume strength" CssClass="@GetScoreCss(_report.OverallScore)" />
+        <StatCard Label="Title Score" Value="@($"{_report.TitleScore}/100")"
+                  Sub="@(_report.TitleScore < 60 ? "needs rebranding" : "good positioning")"
+                  CssClass="@GetScoreCss(_report.TitleScore)" />
+        <StatCard Label="Metrics Score" Value="@($"{_report.MetricsScore}/100")"
+                  Sub="quantifiable achievements"
+                  CssClass="@GetScoreCss(_report.MetricsScore)" />
+        <StatCard Label="Experience" Value="@($"{_report.TotalYearsExperience}+ yrs")"
+                  Sub="@string.Join(", ", _report.SuggestedTitles.Take(2))" />
+    </div>
+
+    <div class="card-grid" style="margin-top: 1rem;">
+        <StatCard Label="Skill Breadth" Value="@($"{_report.SkillBreadthScore}/100")"
+                  Sub="technology coverage" CssClass="@GetScoreCss(_report.SkillBreadthScore)" />
+        <StatCard Label="Leadership" Value="@($"{_report.LeadershipScore}/100")"
+                  Sub="leadership signals" CssClass="@GetScoreCss(_report.LeadershipScore)" />
+        <StatCard Label="Architecture" Value="@($"{_report.ArchitectureScore}/100")"
+                  Sub="design & architecture" CssClass="@GetScoreCss(_report.ArchitectureScore)" />
+        <StatCard Label="Cloud/DevOps" Value="@($"{_report.CloudScore}/100")"
+                  Sub="cloud & infrastructure" CssClass="@GetScoreCss(_report.CloudScore)" />
+    </div>
+
+    @* ── ATS Tailoring Section ───────────────────────────────────────── *@
+    <div class="card" style="margin-top: 1.5rem; border-left: 3px solid var(--accent, #6366f1);">
+        <h2 class="card-title">ATS Keyword Optimization</h2>
+        <p class="text-muted" style="margin-bottom: 1rem;">Select a vacancy to analyze ATS keyword coverage and generate a tailored diff</p>
+
+        <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+                <label>Target Vacancy</label>
+                <select @bind="_selectedVacancyId"
+                        style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;">
+                    <option value="">-- Select a vacancy for ATS analysis --</option>
+                    @foreach (var v in _vacancies)
+                    {
+                        <option value="@v.Id">@v.Title - @v.Company (@v.SeniorityLevel)</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <button class="btn btn-primary" style="margin-top: 0.75rem;"
+                @onclick="RunAtsAnalysis"
+                disabled="@(string.IsNullOrEmpty(_selectedVacancyId) || _runningAts)">
+            @if (_runningAts)
+            {
+                <span>Analyzing...</span>
+            }
+            else
+            {
+                <span>Run ATS Analysis</span>
+            }
+        </button>
+
+        @if (_atsResult is not null)
+        {
+            <div class="card-grid" style="margin-top: 1.5rem;">
+                <StatCard Label="Keyword Density" Value="@($"{_atsResult.KeywordDensityPercent:F1}%")"
+                          Sub="target: 2-4%" CssClass="@(_atsResult.KeywordDensityPercent is >= 2.0 and <= 4.0 ? "text-green" : "text-yellow")" />
+                <StatCard Label="Existing Keywords" Value="@_atsResult.ExistingKeywords.Count.ToString()"
+                          Sub="already in resume" CssClass="text-green" />
+                <StatCard Label="Injected Keywords" Value="@_atsResult.InjectedKeywords.Count.ToString()"
+                          Sub="added for ATS" CssClass="text-cyan" />
+            </div>
+
+            @if (_atsResult.ExistingKeywords.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h4 class="section-title">Keywords Already Present</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var kw in _atsResult.ExistingKeywords)
+                        {
+                            <StatusBadge Text="@kw" Color="green" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_atsResult.InjectedKeywords.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h4 class="section-title">Keywords Injected by ATS Tailorer</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var kw in _atsResult.InjectedKeywords)
+                        {
+                            <StatusBadge Text="@kw" Color="cyan" />
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        @if (_resumeDiff is not null)
+        {
+            <h3 class="section-title" style="margin-top: 1.5rem;">Resume Diff Tracker</h3>
+            <p class="text-muted">Changes made to tailor your resume for <strong>@_resumeDiff.VacancyTitle</strong> at <strong>@_resumeDiff.Company</strong></p>
+
+            <div class="card-grid" style="margin-top: 1rem;">
+                <StatCard Label="Total Changes" Value="@_resumeDiff.Changes.Count.ToString()"
+                          Sub="modifications tracked" CssClass="text-cyan" />
+                <StatCard Label="Highlighted Skills" Value="@_resumeDiff.HighlightedSkills.Count.ToString()"
+                          Sub="vacancy skills you have" CssClass="text-green" />
+                <StatCard Label="Uncovered Skills" Value="@_resumeDiff.UncoveredSkills.Count.ToString()"
+                          Sub="vacancy skills missing" CssClass="@(_resumeDiff.UncoveredSkills.Count > 3 ? "text-red" : "text-yellow")" />
+            </div>
+
+            @if (_resumeDiff.Changes.Count > 0)
+            {
+                <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+                    @foreach (var change in _resumeDiff.Changes)
+                    {
+                        <div class="card" style="padding: 0.75rem;">
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem;">
+                                <StatusBadge Text="@change.ChangeType" Color="@GetChangeTypeColor(change.ChangeType)" />
+                                <span class="badge">@change.Section</span>
+                            </div>
+                            <div><strong>@change.Description</strong></div>
+                            <div class="text-muted" style="font-size: 0.85rem; margin-top: 0.25rem;">@change.Reason</div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_resumeDiff.HighlightedSkills.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h4 class="section-title">Skills Highlighted in Resume</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var skill in _resumeDiff.HighlightedSkills)
+                        {
+                            <span class="badge badge-green">@skill</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_resumeDiff.UncoveredSkills.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h4 class="section-title">Uncovered Skills (Gaps)</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var skill in _resumeDiff.UncoveredSkills)
+                        {
+                            <span class="badge badge-red">@skill</span>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    @if (_report.Issues.Count > 0)
+    {
+        <h2 class="section-title" style="margin-top: 2rem;">Critical Issues</h2>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            @foreach (var issue in _report.Issues)
+            {
+                <div class="card">
+                    <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                        <StatusBadge Text="@issue.Severity.ToUpper()" Color="@GetSeverityColor(issue.Severity)" />
+                        <StatusBadge Text="@issue.Category" Color="blue" />
+                        <div style="flex: 1;">
+                            <strong>@issue.Title</strong>
+                            <p style="margin: 0.35rem 0 0 0; opacity: 0.85;">@issue.Description</p>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_report.Improvements.Count > 0)
+    {
+        <h2 class="section-title" style="margin-top: 2rem;">High-Impact Improvements</h2>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            @foreach (var imp in _report.Improvements.OrderBy(i => i.Priority))
+            {
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <span class="badge badge-blue">@($"#{imp.Priority}")</span>
+                            <strong>@imp.Category</strong>
+                        </div>
+                        <StatusBadge Text="@imp.Impact" Color="green" />
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(imp.Current))
+                    {
+                        <div style="background: rgba(255,0,0,0.08); padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 0.5rem; border-left: 3px solid var(--color-red, #e74c3c);">
+                            <span class="text-muted" style="font-size: 0.8rem;">CURRENT:</span><br />
+                            <span style="opacity: 0.7;">@TruncateText(imp.Current, 200)</span>
+                        </div>
+                    }
+                    <div style="background: rgba(0,255,0,0.08); padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 0.5rem; border-left: 3px solid var(--color-green, #2ecc71);">
+                        <span class="text-muted" style="font-size: 0.8rem;">SUGGESTED:</span><br />
+                        <strong>@imp.Suggested</strong>
+                    </div>
+                    <p class="text-muted" style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">@imp.Explanation</p>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_report.BulletRewrites.Count > 0)
+    {
+        <h2 class="section-title" style="margin-top: 2rem;">Bullet Point Rewrites</h2>
+        <p class="text-muted">Specific rewrites for your experience bullets to target $200K+ positions</p>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            @foreach (var rewrite in _report.BulletRewrites)
+            {
+                <div class="card">
+                    <span class="badge" style="margin-bottom: 0.5rem;">@rewrite.Company</span>
+                    <div style="background: rgba(255,0,0,0.08); padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 0.5rem; border-left: 3px solid var(--color-red, #e74c3c);">
+                        <span class="text-muted" style="font-size: 0.75rem;">BEFORE:</span><br />
+                        <span style="text-decoration: line-through; opacity: 0.6;">@rewrite.Original</span>
+                    </div>
+                    <div style="background: rgba(0,255,0,0.08); padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 0.5rem; border-left: 3px solid var(--color-green, #2ecc71);">
+                        <span class="text-muted" style="font-size: 0.75rem;">AFTER:</span><br />
+                        <strong>@rewrite.Suggested</strong>
+                    </div>
+                    <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.85rem;">@rewrite.Explanation</p>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_report.CareerPivots.Count > 0)
+    {
+        <h2 class="section-title" style="margin-top: 2rem;">Career Pivot Options</h2>
+        <p class="text-muted">Higher-paying roles that match your existing skill set</p>
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+            @for (var i = 0; i < _report.CareerPivots.Count; i++)
+            {
+                var pivot = _report.CareerPivots[i];
+                var isTop = i == 0;
+                <div class="card" style="@(isTop ? "border: 2px solid var(--color-green, #2ecc71);" : "")">
+                    @if (isTop)
+                    {
+                        <div style="margin-bottom: 0.5rem;">
+                            <StatusBadge Text="Best Fit" Color="green" />
+                        </div>
+                    }
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <h3 class="card-title" style="margin: 0;">@pivot.TargetTitle</h3>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <StatusBadge Text="@pivot.SalaryRange" Color="green" />
+                            <StatusBadge Text="@($"Fit: {pivot.FitScore}%")" Color="@(pivot.FitScore >= 70 ? "green" : pivot.FitScore >= 50 ? "yellow" : "red")" />
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="gap: 1rem;">
+                        <div style="flex: 1;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: var(--color-green, #2ecc71);">Skills You Have</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+                                @foreach (var skill in pivot.SkillsYouHave)
+                                {
+                                    <span class="badge badge-green">@skill</span>
+                                }
+                                @if (pivot.SkillsYouHave.Count == 0)
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </div>
+                        </div>
+                        <div style="flex: 1;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: var(--color-yellow, #f39c12);">Skills to Add</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+                                @foreach (var skill in pivot.SkillsNeeded)
+                                {
+                                    <span class="badge badge-yellow">@skill</span>
+                                }
+                                @if (pivot.SkillsNeeded.Count == 0)
+                                {
+                                    <span class="badge badge-green">All covered!</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 1rem 0 0.5rem 0;">Action Plan</h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                        @foreach (var action in pivot.ActionItems)
+                        {
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                <span style="color: var(--accent); flex-shrink: 0;">></span>
+                                <span>@action</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_report.SuggestedTitles.Count > 0)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h3 class="card-title">Recommended Titles for Job Search</h3>
+            <p class="text-muted">Use these titles instead of ".NET Developer" when searching and applying</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem;">
+                @foreach (var title in _report.SuggestedTitles)
+                {
+                    <span class="badge badge-blue" style="font-size: 0.95rem; padding: 0.4rem 0.75rem;">@title</span>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="card" style="margin-top: 1.5rem; border-left: 3px solid var(--cyan);">
+        <h3 class="card-title">Contractor Positioning</h3>
+        <p class="text-muted" style="margin-bottom: 1rem;">How to position yourself for high-rate B2B contracts ($60-120/hr)</p>
+
+        <div class="card-grid">
+            <div class="stat-card">
+                <div class="stat-label">Current Title</div>
+                <div class="stat-value" style="font-size: 16px; color: var(--yellow);">@_report.CurrentTitle</div>
+                <div class="stat-sub">Too generic for premium rates</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Recommended Title</div>
+                <div class="stat-value" style="font-size: 16px; color: var(--green);">@(_contractorTitle)</div>
+                <div class="stat-sub">Commands $80-120/hr rates</div>
+            </div>
+        </div>
+
+        <h4 class="section-title">Contractor-Specific Summary</h4>
+        <div class="card" style="background: rgba(34, 211, 238, 0.05); border-left: 3px solid var(--cyan);">
+            <p>@_contractorSummary</p>
+        </div>
+
+        <h4 class="section-title">Key Phrases for B2B Profiles</h4>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+            @foreach (var phrase in _contractorPhrases)
+            {
+                <span class="badge badge-cyan">@phrase</span>
+            }
+        </div>
+
+        <h4 class="section-title">Rate Positioning</h4>
+        <div class="card-grid">
+            <StatCard Label="EU B2B Rate" Value="$450-600/day" Sub="@("~" + _report.TotalYearsExperience + "+ years .NET")" CssClass="text-green" />
+            <StatCard Label="US Hourly Rate" Value="$70-100/hr" Sub="remote contractor" CssClass="text-cyan" />
+            <StatCard Label="Annual Equivalent" Value="$100-130K" Sub="B2B contract value" CssClass="text-blue" />
+        </div>
+    </div>
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+        <a href="/resume" class="btn btn-primary">Resume Builder</a>
+        <a href="/career/outreach" class="btn">Contractor Outreach</a>
+        <a href="/career/roadmap" class="btn">Career Roadmap</a>
+        <a href="/career/gaps" class="btn">Skill Gaps</a>
+        <a href="/salary" class="btn">Salary Intel</a>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _runningAts;
+    private string _errorMessage = "";
+    private ResumeAnalysisReport? _report;
+    private readonly ResumeAnalyzer _analyzer = new();
+
+    // ATS analysis state
+    private List<JobVacancy> _vacancies = [];
+    private string _selectedVacancyId = "";
+    private AtsTailoringResult? _atsResult;
+    private ResumeDiff? _resumeDiff;
+
+    // Profile data
+    private UserProfile? _userProfile;
+
+    private string _contractorTitle = "";
+    private string _contractorSummary = "";
+    private readonly string[] _contractorPhrases =
+    [
+        "B2B Contractor", "Available for remote engagement", "Can invoice internationally",
+        "EU VAT registered", "Direct contract preferred", "Solution Architecture",
+        "System Design", "Performance Optimization", "Distributed Systems",
+        "High-load architecture", "Team Lead experience"
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Load real profile data from file
+            await LoadUserProfile();
+
+            // Build ResumeData from real profile if available, otherwise fall back to hardcoded
+            var resume = BuildResumeDataFromProfile();
+            _report = _analyzer.Analyze(resume);
+
+            // Generate contractor positioning based on resume
+            _contractorTitle = _report.TotalYearsExperience >= 10
+                ? "Senior Solution Architect / .NET Platform Engineer"
+                : _report.TotalYearsExperience >= 7
+                    ? "Senior .NET Contractor / Tech Lead"
+                    : "Senior .NET Developer (Contract)";
+
+            _contractorSummary = $"Independent B2B contractor with {_report.TotalYearsExperience}+ years of hands-on .NET experience. " +
+                "Specialized in designing and delivering high-load microservices architectures on Azure/AWS. " +
+                "Proven track record of leading distributed engineering teams (5-8 engineers), " +
+                "implementing CI/CD pipelines with Docker/Kubernetes, and optimizing system performance. " +
+                "Available for remote B2B engagements. Can invoice internationally (EU VAT / FOP).";
+
+            // Load vacancies for ATS analysis
+            _vacancies = (await VacancyRepo.GetVacanciesAsync())
+                .OrderByDescending(v => v.ScrapedDate)
+                .Take(50)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load resume data: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadUserProfile()
+    {
+        var profilePath = Path.Combine(DataDir.Path, "my-profile.json");
+        if (!File.Exists(profilePath)) return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(profilePath);
+            _userProfile = JsonSerializer.Deserialize<UserProfile>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch
+        {
+            // Profile malformed - will fall back to hardcoded data
+        }
+    }
+
+    /// <summary>
+    /// Builds ResumeData from the loaded UserProfile.
+    /// Falls back to hardcoded data if profile is unavailable.
+    /// </summary>
+    private ResumeData BuildResumeDataFromProfile()
+    {
+        if (_userProfile is null)
+            return LoadFallbackResumeData();
+
+        var resumeData = new ResumeData
+        {
+            CurrentTitle = !string.IsNullOrWhiteSpace(_userProfile.Personal.Title)
+                ? _userProfile.Personal.Title
+                : ".Net Software Engineer",
+            Summary = _userProfile.Personal.Summary,
+            Skills = _userProfile.Skills
+                .Select(s => s.SkillName)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .ToList(),
+            TotalYearsExperience = CalculateYearsExperience(_userProfile.Experiences)
+        };
+
+        foreach (var exp in _userProfile.Experiences)
+        {
+            resumeData.Experiences.Add(new ResumeExperience
+            {
+                Title = exp.Role,
+                Company = exp.Company,
+                Period = exp.Duration,
+                Bullets = exp.Achievements.ToList(),
+                Technologies = exp.TechStack.ToList()
+            });
+        }
+
+        // Ensure we have meaningful data
+        if (resumeData.Skills.Count == 0 || resumeData.Experiences.Count == 0)
+            return LoadFallbackResumeData();
+
+        return resumeData;
+    }
+
+    private static int CalculateYearsExperience(List<Experience> experiences)
+    {
+        if (experiences.Count == 0)
+            return 0;
+
+        var earliest = experiences
+            .Where(e => e.StartDate.HasValue)
+            .Select(e => e.StartDate!.Value)
+            .DefaultIfEmpty(DateTimeOffset.UtcNow)
+            .Min();
+
+        return (int)Math.Round((DateTimeOffset.UtcNow - earliest).TotalDays / 365.25);
+    }
+
+    private void RunAtsAnalysis()
+    {
+        _errorMessage = "";
+        var vacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
+        if (vacancy is null) return;
+
+        _runningAts = true;
+
+        try
+        {
+            var profile = _userProfile ?? BuildFallbackUserProfile();
+
+            // Generate base resume using ResumeBuilder engine
+            var baseResume = ResumeBuilderEngine.Build(profile, vacancy);
+
+            // Run ATS tailoring
+            _atsResult = AtsTailorerEngine.Tailor(baseResume, vacancy);
+
+            // Track the diff
+            _resumeDiff = DiffTrackerEngine.Track(baseResume, _atsResult, vacancy, profile);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"ATS analysis failed: {ex.Message}";
+        }
+        finally
+        {
+            _runningAts = false;
+        }
+    }
+
+    private UserProfile BuildFallbackUserProfile()
+    {
+        return new UserProfile
+        {
+            Personal = new PersonalInfo
+            {
+                Name = "Software Engineer",
+                Title = "Senior .NET Developer",
+                Summary = "Experienced .NET developer with expertise in backend systems and cloud technologies."
+            },
+            Skills = new List<string> { "C#", ".NET", "ASP.NET Core", "Entity Framework", "SQL", "Azure",
+                "Docker", "REST API", "Microservices", "Git" }
+                .Select(s => new SkillProfile { SkillName = s })
+                .ToList(),
+            Experiences = []
+        };
+    }
+
+    private static ResumeData LoadFallbackResumeData()
+    {
+        return new ResumeData
+        {
+            CurrentTitle = ".Net Software Engineer",
+            Headline = "Tech Lead | Senior .NET Developer | C# | ASP.NET Core | Microservices | Cloud | CI/CD | DevOps | Full Stack | Architectural Expertise",
+            Summary = "Results-driven Software Engineer with 12+ years of experience in the .NET ecosystem, specializing in C#, .NET Core, ASP.NET Core, and SQL. Proficient in full-stack development with React, Node.js, and Angular. Expert in cloud technologies (AWS, Azure), CI/CD, and DevOps. Strong background in microservices architecture, RESTful APIs, and scalable solutions. Adept at leading projects, mentoring teams, and optimizing system performance in Agile environments.",
+            TotalYearsExperience = 12,
+            Skills =
+            [
+                "C#", ".NET Core", "ASP.NET Core", "JavaScript", "TypeScript", "Angular", "React", "Node.js",
+                "AWS", "Azure", "Docker", "Kubernetes", "Azure DevOps", "GitHub Actions",
+                "SQL Server", "PostgreSQL", "Redis", "Entity Framework", "MongoDB",
+                "RESTful APIs", "OAuth", "JWT", "GraphQL",
+                "NUnit", "MSTest", "Agile", "Scrum", "SOLID", "TDD", "Microservices Architecture",
+                "Kafka", "RabbitMQ", "CI/CD"
+            ],
+            Experiences =
+            [
+                new ResumeExperience
+                {
+                    Title = ".Net Software Engineer",
+                    Company = "Svitla Systems",
+                    Period = "November 2022 - Present",
+                    Bullets =
+                    [
+                        "Designed and improved backend services using .NET 8 and ASP.NET Core, enhancing system reliability and optimizing workflows.",
+                        "Strengthened system security by implementing Azure AD SSO and role-based access control.",
+                        "Built and maintained CI/CD pipelines using Azure DevOps and Kubernetes, improving automation efficiency.",
+                        "Coordinated efforts between development, DevOps, and product teams, improving project alignment.",
+                        "Developed scalable architecture solutions, optimizing system performance and maintainability.",
+                        "Produced clear and comprehensive technical documentation to support system scalability.",
+                        "Developed RESTful APIs in a microservices architecture, improving service integration.",
+                        "Modernized backend systems using Azure and .NET Core, improving platform stability.",
+                        "Led key initiatives such as Change Data Capture (CDC) and auto-translation, enhancing system functionality.",
+                        "Integrated Docker-based cloud solutions, streamlining deployments and improving workflows.",
+                        "Established best practices for monitoring, logging, and security, ensuring system reliability."
+                    ],
+                    Technologies = [".NET 8", "ASP.NET Core", "Azure AKS", "SQL Server", "Redis", "Docker", "Kubernetes", "OAuth", "API Gateway", "React", "Node.js"]
+                },
+                new ResumeExperience
+                {
+                    Title = ".Net Software Engineer",
+                    Company = "SoftServe",
+                    Period = "November 2020 - November 2022",
+                    Bullets =
+                    [
+                        "Designed scalable microservices with .NET Core and PostgreSQL, improving modularity and maintainability.",
+                        "Developed and maintained CI/CD pipelines using Docker and Kubernetes, ensuring deployment stability.",
+                        "Led code reviews and implemented SOLID principles, promoting high-quality coding standards.",
+                        "Enhanced application performance through thoughtful refactoring and optimization.",
+                        "Optimized Redis caching and PostgreSQL database management, improving system efficiency.",
+                        "Integrated Identity Server for secure user authentication and authorization.",
+                        "Created detailed technical documentation, enabling seamless onboarding and maintenance."
+                    ],
+                    Technologies = [".NET Core", "MSSQL", "Redis", "Entity Framework", "React", "Docker", "PostgreSQL", "Kafka", "AWS", "Kubernetes", "RabbitMQ", "Identity Server"]
+                }
+            ]
+        };
+    }
+
+    private static string GetScoreCss(int score) => score switch
+    {
+        >= 75 => "text-green",
+        >= 55 => "text-cyan",
+        >= 35 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetSeverityColor(string severity) => severity switch
+    {
+        "critical" => "red",
+        "high" => "orange",
+        "medium" => "yellow",
+        _ => "gray"
+    };
+
+    private static string GetChangeTypeColor(string changeType) => changeType switch
+    {
+        "KeywordInjection" => "cyan",
+        "SectionReorder" => "blue",
+        "ExperienceEmphasis" => "green",
+        "TitleAlignment" => "yellow",
+        "SkillHighlight" => "green",
+        _ => "gray"
+    };
+
+    private static string TruncateText(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength] + "...";
+}

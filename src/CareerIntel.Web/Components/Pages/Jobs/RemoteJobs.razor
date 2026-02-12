@@ -1,0 +1,296 @@
+@page "/jobs/remote"
+@inject VacancyRepository VacancyRepo
+
+<div class="page-header">
+    <h1 class="page-title">Remote Jobs</h1>
+    <p class="page-subtitle">Browse remote and remote-friendly positions from scraped vacancies</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading remote jobs..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Remote Jobs" Value="@_remoteVacancies.Count.ToString("N0")" />
+        <StatCard Label="Fully Remote"
+                  Value="@_fullyRemoteCount.ToString("N0")"
+                  CssClass="green" />
+        <StatCard Label="Remote Friendly"
+                  Value="@_remoteFriendlyCount.ToString("N0")"
+                  CssClass="cyan" />
+        <StatCard Label="Avg Salary"
+                  Value="@FormatAvgSalary()"
+                  CssClass="yellow" />
+        <StatCard Label="Countries"
+                  Value="@_countries.Count.ToString()" />
+    </div>
+
+    <div class="card" style="margin-bottom: 1rem;">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Search</label>
+                <input type="text" @bind="_searchText" @bind:event="oninput"
+                       placeholder="Search titles, companies..." />
+            </div>
+            <div class="form-group">
+                <label>Country</label>
+                <select @bind="_selectedCountry">
+                    <option value="">All Countries</option>
+                    @foreach (var c in _countries)
+                    {
+                        <option value="@c">@c</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Seniority</label>
+                <select @bind="_selectedSeniority">
+                    <option value="">Any</option>
+                    @foreach (var s in Enum.GetValues<SeniorityLevel>())
+                    {
+                        <option value="@s">@s</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Platform</label>
+                <select @bind="_selectedPlatform">
+                    <option value="">All Platforms</option>
+                    @foreach (var p in _platforms)
+                    {
+                        <option value="@p">@p</option>
+                    }
+                </select>
+            </div>
+        </div>
+    </div>
+
+    @if (_remoteVacancies.Count == 0)
+    {
+        <div class="card">
+            <p class="text-muted">No remote jobs in database. Run a scan from the Job Browser to fetch remote positions.</p>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <span class="text-muted">
+                    Showing @FilteredVacancies.Count of @_remoteVacancies.Count remote jobs
+                    (page @(_currentPage + 1) of @TotalPages)
+                </span>
+            </div>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Company</th>
+                        <th>Country</th>
+                        <th>Remote Type</th>
+                        <th>Seniority</th>
+                        <th>Salary</th>
+                        <th>Platform</th>
+                        <th>Posted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in PagedVacancies)
+                    {
+                        <tr>
+                            <td class="truncate" style="max-width: 280px;">@v.Title</td>
+                            <td>@v.Company</td>
+                            <td>@(string.IsNullOrEmpty(v.Country) ? "-" : v.Country)</td>
+                            <td>
+                                <StatusBadge Text="@v.RemotePolicy.ToString()"
+                                             Color="@(v.RemotePolicy == RemotePolicy.FullyRemote ? "green" : "cyan")" />
+                            </td>
+                            <td>@v.SeniorityLevel</td>
+                            <td class="text-cyan">@FormatSalary(v)</td>
+                            <td><span class="badge">@v.SourcePlatform</span></td>
+                            <td class="text-muted">@v.PostedDate.ToString("MMM dd")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (TotalPages > 1)
+            {
+                <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+                    <button class="btn" disabled="@(_currentPage == 0)" @onclick="PreviousPage">Previous</button>
+                    @for (var i = PaginationStart; i <= PaginationEnd; i++)
+                    {
+                        var pageIndex = i;
+                        <button class="btn @(pageIndex == _currentPage ? "btn-primary" : "")"
+                                @onclick="() => GoToPage(pageIndex)">
+                            @(pageIndex + 1)
+                        </button>
+                    }
+                    <button class="btn" disabled="@(_currentPage >= TotalPages - 1)" @onclick="NextPage">Next</button>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Recommended Remote Job Boards</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Board</th>
+                    <th>.NET Rating</th>
+                    <th>EU Friendly</th>
+                    <th>Priority</th>
+                    <th>Tags</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var board in _remoteBoards)
+                {
+                    <tr>
+                        <td><strong>@board.Name</strong></td>
+                        <td class="text-cyan">@board.DotNetRating</td>
+                        <td>
+                            <StatusBadge Text="@board.EuFriendly" Color="green" />
+                        </td>
+                        <td class="text-yellow">@board.Priority</td>
+                        <td><span class="badge">@board.Tags</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private const int PageSize = 25;
+
+    private bool _loading = true;
+    private List<JobVacancy> _remoteVacancies = [];
+    private int _fullyRemoteCount;
+    private int _remoteFriendlyCount;
+    private List<string> _countries = [];
+    private List<string> _platforms = [];
+    private int _currentPage;
+
+    // Filters
+    private string _searchText = "";
+    private string _selectedCountry = "";
+    private string _selectedSeniority = "";
+    private string _selectedPlatform = "";
+
+    private List<JobVacancy> FilteredVacancies
+    {
+        get
+        {
+            var query = _remoteVacancies.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                var search = _searchText.Trim();
+                query = query.Where(v =>
+                    v.Title.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    v.Company.Contains(search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrEmpty(_selectedCountry))
+                query = query.Where(v => v.Country == _selectedCountry);
+
+            if (!string.IsNullOrEmpty(_selectedSeniority) && Enum.TryParse<SeniorityLevel>(_selectedSeniority, out var seniority))
+                query = query.Where(v => v.SeniorityLevel == seniority);
+
+            if (!string.IsNullOrEmpty(_selectedPlatform))
+                query = query.Where(v => v.SourcePlatform == _selectedPlatform);
+
+            return query.ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredVacancies.Count / PageSize));
+    private int PaginationStart => Math.Max(0, _currentPage - 3);
+    private int PaginationEnd => Math.Min(TotalPages - 1, _currentPage + 3);
+
+    private List<JobVacancy> PagedVacancies => FilteredVacancies
+        .Skip(_currentPage * PageSize)
+        .Take(PageSize)
+        .ToList();
+
+    private readonly List<RemoteBoard> _remoteBoards =
+    [
+        new("RemoteOK", "7/10", "Yes", "9", "remote-first"),
+        new("WeWorkRemotely", "8/10", "Yes", "9", "curated"),
+        new("Himalays", "8/10", "Yes", "8", "tech-focused"),
+        new("Jobicy", "7/10", "Yes", "8", "salary-data"),
+        new("JustRemote", "6/10", "Yes", "7", "global"),
+        new("WorkingNomads", "6/10", "Yes", "7", "nomad-friendly")
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var allVacancies = await VacancyRepo.GetVacanciesAsync();
+
+        _remoteVacancies = allVacancies
+            .Where(v => v.RemotePolicy == RemotePolicy.FullyRemote || v.RemotePolicy == RemotePolicy.RemoteFriendly)
+            .OrderByDescending(v => v.PostedDate)
+            .ToList();
+
+        _fullyRemoteCount = _remoteVacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote);
+        _remoteFriendlyCount = _remoteVacancies.Count(v => v.RemotePolicy == RemotePolicy.RemoteFriendly);
+
+        _countries = _remoteVacancies
+            .Where(v => !string.IsNullOrWhiteSpace(v.Country))
+            .Select(v => v.Country)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+
+        _platforms = _remoteVacancies
+            .Select(v => v.SourcePlatform)
+            .Distinct()
+            .OrderBy(p => p)
+            .ToList();
+
+        _loading = false;
+    }
+
+    private string FormatAvgSalary()
+    {
+        var withSalary = _remoteVacancies
+            .Where(v => v.SalaryMin.HasValue)
+            .ToList();
+
+        if (withSalary.Count == 0)
+            return "-";
+
+        var avg = withSalary.Average(v => v.SalaryMax.HasValue
+            ? (double)(v.SalaryMin!.Value + v.SalaryMax.Value) / 2
+            : (double)v.SalaryMin!.Value);
+
+        return $"${avg:N0}";
+    }
+
+    private static string FormatSalary(JobVacancy v)
+    {
+        if (!v.SalaryMin.HasValue)
+            return "-";
+
+        var min = v.SalaryMin.Value.ToString("N0");
+        var currency = v.SalaryCurrency;
+
+        if (v.SalaryMax.HasValue)
+            return $"{currency} {min} - {v.SalaryMax.Value:N0}";
+
+        return $"{currency} {min}+";
+    }
+
+    private void GoToPage(int page) => _currentPage = page;
+    private void PreviousPage() { if (_currentPage > 0) _currentPage--; }
+    private void NextPage() { if (_currentPage < TotalPages - 1) _currentPage++; }
+
+    private sealed record RemoteBoard(
+        string Name,
+        string DotNetRating,
+        string EuFriendly,
+        string Priority,
+        string Tags);
+}

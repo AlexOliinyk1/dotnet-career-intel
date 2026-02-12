@@ -1,0 +1,105 @@
+@page "/career/ai-impact"
+@inject VacancyRepository VacancyRepo
+@using CareerIntel.Intelligence
+
+<div class="page-header">
+    <h1 class="page-title">AI Impact Analysis</h1>
+    <p class="page-subtitle">Assess which skills are AI-resistant vs AI-threatened based on current market data</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing AI impact on skills..." />
+
+@if (!_loading)
+{
+    <div class="card" style="margin-bottom: 1.5rem; border-left: 3px solid var(--color-cyan);">
+        <p style="margin: 0;">
+            <strong class="text-cyan">Key Insight:</strong>
+            Focus on <strong>AI-Proof</strong> and <strong>Opportunity</strong> skills.
+            Use AI tools to accelerate <strong>Medium-Risk</strong> work.
+            Migrate away from <strong>High-Risk</strong> tasks.
+        </p>
+    </div>
+
+    <div class="card-grid">
+        <StatCard Label="Total Skills Assessed"
+                  Value="@_assessments.Count.ToString()"
+                  Sub="across all risk categories" />
+        <StatCard Label="AI-Proof"
+                  Value="@_assessments.Count(a => a.RiskLevel == "Low Risk").ToString()"
+                  Sub="resilient to automation"
+                  CssClass="text-green" />
+        <StatCard Label="Opportunity"
+                  Value="@_assessments.Count(a => a.RiskLevel == "Opportunity").ToString()"
+                  Sub="highest ROI to learn"
+                  CssClass="text-cyan" />
+        <StatCard Label="At Risk"
+                  Value="@_assessments.Count(a => a.RiskLevel == "High Risk").ToString()"
+                  Sub="likely to be automated"
+                  CssClass="text-red" />
+    </div>
+
+    @foreach (var group in _assessments.GroupBy(a => a.Category))
+    {
+        var categoryRiskLevel = group.First().RiskLevel;
+        var categoryColor = GetColor(categoryRiskLevel);
+
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="section-title" style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-@categoryColor); display: inline-block;"></span>
+                @group.Key
+                <StatusBadge Text="@categoryRiskLevel" Color="@categoryColor" />
+            </h2>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Market Demand</th>
+                        <th>Resilience Score</th>
+                        <th>Recommendation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in group)
+                    {
+                        <tr>
+                            <td><strong>@a.SkillName</strong></td>
+                            <td>@a.MarketDemand</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <div style="width: 60px; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden;">
+                                        <div style="width: @(a.ResilienceScore)%; height: 100%; background: var(--color-@GetColor(a.RiskLevel)); border-radius: 3px;"></div>
+                                    </div>
+                                    <span>@a.ResilienceScore</span>
+                                </div>
+                            </td>
+                            <td class="text-muted">@a.Recommendation</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private List<AiRiskAssessment> _assessments = [];
+    private readonly CareerEvolutionEngine _engine = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var vacancies = await VacancyRepo.GetVacanciesAsync();
+        _assessments = _engine.AssessAiRisk(vacancies);
+        _loading = false;
+    }
+
+    private static string GetColor(string riskLevel) => riskLevel switch
+    {
+        "Low Risk" => "green",
+        "Opportunity" => "cyan",
+        "Medium Risk" => "yellow",
+        "High Risk" => "red",
+        _ => "gray"
+    };
+}

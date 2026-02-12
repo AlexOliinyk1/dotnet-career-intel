@@ -1,0 +1,50 @@
+@inject IJSRuntime JS
+
+<button class="btn btn-secondary btn-sm" @onclick="Export" disabled="@_exporting" title="Export to CSV">
+    @if (_exporting)
+    {
+        <span>Exporting...</span>
+    }
+    else
+    {
+        <span aria-hidden="true">↓</span>
+        <span>@Label</span>
+    }
+</button>
+
+@code {
+    private bool _exporting;
+
+    [Parameter] public string Label { get; set; } = "Export CSV";
+    [Parameter] public string FileName { get; set; } = "export.csv";
+    [Parameter] public Func<string>? GetCsvContent { get; set; }
+
+    private async Task Export()
+    {
+        if (GetCsvContent is null) return;
+
+        _exporting = true;
+        try
+        {
+            var csv = GetCsvContent();
+            if (string.IsNullOrEmpty(csv)) return;
+
+            // Trigger browser download via JS interop
+            var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+            var base64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("eval",
+                "(function(){" +
+                "var a=document.createElement('a');" +
+                "a.href='data:text/csv;base64," + base64 + "';" +
+                "a.download='" + FileName.Replace("'", "\\'") + "';" +
+                "document.body.appendChild(a);" +
+                "a.click();" +
+                "document.body.removeChild(a);" +
+                "})()");
+        }
+        finally
+        {
+            _exporting = false;
+        }
+    }
+}

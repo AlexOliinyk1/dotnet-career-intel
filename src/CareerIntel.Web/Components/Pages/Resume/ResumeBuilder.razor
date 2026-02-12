@@ -1,6 +1,10 @@
 @page "/resume"
+@using CareerIntel.Matching
+@using CareerIntel.Resume
 @inject VacancyRepository VacancyRepo
 @inject DataDirectoryConfig DataDir
+@inject CareerIntel.Resume.ResumeBuilder ResumeEngine
+@inject CoverLetterGenerator CoverLetterEngine
 
 <div class="page-header">
     <h1 class="page-title">Resume Builder</h1>
@@ -8,6 +12,13 @@
 </div>
 
 <LoadingSpinner Loading="@_loading" Message="Loading vacancies..." />
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="card" style="border-left: 3px solid var(--color-red, #e74c3c); margin-bottom: 1rem;">
+        <strong style="color: var(--color-red, #e74c3c);">Error:</strong> @_errorMessage
+    </div>
+}
 
 @if (!_loading)
 {
@@ -26,11 +37,25 @@
             </div>
         </div>
         <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-            <button class="btn btn-primary" @onclick="GenerateResume" disabled="@(string.IsNullOrEmpty(_selectedVacancyId))">
-                Generate Resume
+            <button class="btn btn-primary" @onclick="GenerateResume" disabled="@(string.IsNullOrEmpty(_selectedVacancyId) || _generating)">
+                @if (_generating && _generatingResume)
+                {
+                    <span>Generating...</span>
+                }
+                else
+                {
+                    <span>Generate Resume</span>
+                }
             </button>
-            <button class="btn" @onclick="GenerateCoverLetter" disabled="@(string.IsNullOrEmpty(_selectedVacancyId))">
-                Generate Cover Letter
+            <button class="btn" @onclick="GenerateCoverLetter" disabled="@(string.IsNullOrEmpty(_selectedVacancyId) || _generating)">
+                @if (_generating && !_generatingResume)
+                {
+                    <span>Generating...</span>
+                }
+                else
+                {
+                    <span>Generate Cover Letter</span>
+                }
             </button>
         </div>
     </div>
@@ -76,19 +101,14 @@
         </div>
     }
 
-    @if (_showResume)
+    @if (_showResume && !string.IsNullOrEmpty(_generatedResumeMarkdown))
     {
         <div class="card" style="margin-top: 1.5rem;">
-            <h2 class="card-title">Generated Resume Sections</h2>
+            <h2 class="card-title">Generated Tailored Resume</h2>
 
             <div class="stat-card" style="margin-top: 1rem;">
-                <h3 class="section-title">Professional Summary</h3>
-                <p>
-                    Senior .NET Software Engineer with extensive experience in @string.Join(", ", _matchingSkills.Take(5))
-                    and a proven track record of delivering scalable backend systems. Seeking the
-                    @(_selectedVacancy?.Title ?? "Software Engineer") role at @(_selectedVacancy?.Company ?? "the company")
-                    to leverage deep expertise in modern .NET development.
-                </p>
+                <h3 class="section-title">Resume Preview</h3>
+                <div style="white-space: pre-line; line-height: 1.6; font-family: inherit;">@_generatedResumeMarkdown</div>
             </div>
 
             <div class="stat-card" style="margin-top: 1rem;">
@@ -114,11 +134,11 @@
                                 <td>
                                     @if (hasSkill)
                                     {
-                                        @($"Highlight {skill} projects and experience prominently")
+                                        @($"Highlighted in tailored resume")
                                     }
                                     else
                                     {
-                                        @($"Emphasize transferable skills and willingness to learn {skill}")
+                                        @($"Not in your profile - consider adding transferable skills")
                                     }
                                 </td>
                             </tr>
@@ -128,17 +148,7 @@
             </div>
 
             <div class="stat-card" style="margin-top: 1rem;">
-                <h3 class="section-title">Suggested Experience Bullets</h3>
-                <ul style="margin: 0; padding-left: 1.5rem;">
-                    @foreach (var bullet in _suggestedBullets)
-                    {
-                        <li style="padding: 0.3rem 0;">@bullet</li>
-                    }
-                </ul>
-            </div>
-
-            <div class="stat-card" style="margin-top: 1rem;">
-                <h3 class="section-title">ATS Keywords to Include</h3>
+                <h3 class="section-title">ATS Keywords Included</h3>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
                     @foreach (var keyword in _atsKeywords)
                     {
@@ -149,22 +159,13 @@
         </div>
     }
 
-    @if (_showCoverLetter)
+    @if (_showCoverLetter && !string.IsNullOrEmpty(_generatedCoverLetter))
     {
         <div class="card" style="margin-top: 1.5rem;">
             <h2 class="card-title">Generated Cover Letter</h2>
 
             <div class="stat-card" style="margin-top: 1rem;">
-                <div style="white-space: pre-line; line-height: 1.6;">Dear Hiring Manager at @(_selectedVacancy?.Company ?? "the company"),
-
-I am writing to express my strong interest in the @(_selectedVacancy?.Title ?? "Software Engineer") position. With extensive experience in @string.Join(", ", _matchingSkills.Take(3)), I am confident in my ability to contribute effectively to your team.
-
-My background includes building high-performance .NET applications, designing scalable distributed systems, and collaborating with cross-functional teams to deliver quality software. I am particularly drawn to this opportunity because of the focus on @string.Join(" and ", _selectedVacancy?.RequiredSkills.Take(2) ?? ["modern technologies"]).
-
-I look forward to discussing how my skills and experience align with your team's needs.
-
-Best regards,
-[Your Name]</div>
+                <div style="white-space: pre-line; line-height: 1.6;">@_generatedCoverLetter</div>
             </div>
         </div>
     }
@@ -190,25 +191,26 @@ Best regards,
 
 @code {
     private bool _loading = true;
+    private bool _generating;
+    private bool _generatingResume;
     private List<JobVacancy> _vacancies = [];
     private string _selectedVacancyId = "";
     private JobVacancy? _selectedVacancy;
     private bool _showResume;
     private bool _showCoverLetter;
-    private List<string> _matchingSkills = [];
-    private List<string> _suggestedBullets = [];
     private List<string> _atsKeywords = [];
+    private string _generatedResumeMarkdown = "";
+    private string _generatedCoverLetter = "";
+    private string _errorMessage = "";
 
-    // Placeholder profile skills
-    private static readonly List<string> _yourSkills =
-    [
-        "C#", ".NET", "ASP.NET Core", "Entity Framework", "SQL", "Azure",
-        "Docker", "REST API", "Microservices", "Git", "TypeScript", "React",
-        "Unit Testing", "CI/CD", "Redis", "RabbitMQ", "Blazor", "gRPC"
-    ];
+    // Loaded from user profile (my-profile.json)
+    private UserProfile? _userProfile;
+    private List<string> _yourSkills = [];
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadUserProfile();
+
         _vacancies = (await VacancyRepo.GetVacanciesAsync())
             .OrderByDescending(v => v.ScrapedDate)
             .Take(50)
@@ -217,74 +219,119 @@ Best regards,
         _loading = false;
     }
 
+    private async Task LoadUserProfile()
+    {
+        var profilePath = Path.Combine(DataDir.Path, "my-profile.json");
+        if (!File.Exists(profilePath)) return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(profilePath);
+            _userProfile = JsonSerializer.Deserialize<UserProfile>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (_userProfile?.Skills is not null)
+            {
+                _yourSkills = _userProfile.Skills
+                    .Select(s => s.SkillName)
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // Fallback if profile is malformed
+        }
+
+        // Fallback if profile has no skills defined
+        if (_yourSkills.Count == 0)
+        {
+            _yourSkills = ["C#", ".NET", "ASP.NET Core", "Entity Framework", "SQL", "Azure",
+                "Docker", "REST API", "Microservices", "Git"];
+        }
+    }
+
     private void GenerateResume()
     {
+        _errorMessage = "";
         _selectedVacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
         if (_selectedVacancy is null)
             return;
 
-        _matchingSkills = _selectedVacancy.RequiredSkills
-            .Where(s => _yourSkills.Contains(s, StringComparer.OrdinalIgnoreCase))
-            .ToList();
+        _generating = true;
+        _generatingResume = true;
 
-        _suggestedBullets = GenerateBullets(_selectedVacancy);
-        _atsKeywords = GenerateAtsKeywords(_selectedVacancy);
-        _showResume = true;
-        _showCoverLetter = false;
+        try
+        {
+            var profile = _userProfile ?? BuildFallbackProfile();
+
+            // Use the ResumeBuilder engine to generate a tailored resume
+            _generatedResumeMarkdown = ResumeEngine.Build(profile, _selectedVacancy);
+
+            // Extract ATS keywords from the vacancy
+            _atsKeywords = _selectedVacancy.RequiredSkills
+                .Concat(_selectedVacancy.PreferredSkills)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            _showResume = true;
+            _showCoverLetter = false;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to generate resume: {ex.Message}";
+        }
+        finally
+        {
+            _generating = false;
+        }
     }
 
     private void GenerateCoverLetter()
     {
+        _errorMessage = "";
         _selectedVacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
         if (_selectedVacancy is null)
             return;
 
-        _matchingSkills = _selectedVacancy.RequiredSkills
-            .Where(s => _yourSkills.Contains(s, StringComparer.OrdinalIgnoreCase))
-            .ToList();
+        _generating = true;
+        _generatingResume = false;
 
-        _showCoverLetter = true;
-        _showResume = false;
+        try
+        {
+            var profile = _userProfile ?? BuildFallbackProfile();
+
+            // Use the CoverLetterGenerator engine to generate a tailored cover letter
+            _generatedCoverLetter = CoverLetterEngine.Generate(profile, _selectedVacancy);
+
+            _showCoverLetter = true;
+            _showResume = false;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to generate cover letter: {ex.Message}";
+        }
+        finally
+        {
+            _generating = false;
+        }
     }
 
-    private static List<string> GenerateBullets(JobVacancy vacancy)
+    /// <summary>
+    /// Creates a minimal fallback profile when my-profile.json is unavailable.
+    /// </summary>
+    private UserProfile BuildFallbackProfile()
     {
-        var bullets = new List<string>
+        return new UserProfile
         {
-            $"Designed and implemented scalable backend services using .NET and C#, serving requirements aligned with {vacancy.Company}'s technology stack",
-            "Built RESTful APIs with ASP.NET Core handling 10K+ requests/second with comprehensive error handling and logging",
-            "Optimized database queries and implemented caching strategies reducing average response times by 40%"
+            Personal = new PersonalInfo
+            {
+                Name = "Software Engineer",
+                Title = "Senior .NET Developer",
+                Summary = "Experienced .NET developer with expertise in backend systems and cloud technologies."
+            },
+            Skills = _yourSkills.Select(s => new SkillProfile { SkillName = s }).ToList(),
+            Experiences = []
         };
-
-        if (vacancy.RequiredSkills.Any(s => s.Contains("Azure", StringComparison.OrdinalIgnoreCase) ||
-                                             s.Contains("Cloud", StringComparison.OrdinalIgnoreCase)))
-        {
-            bullets.Add("Deployed and managed cloud-native applications on Azure with CI/CD pipelines");
-        }
-
-        if (vacancy.RequiredSkills.Any(s => s.Contains("Microservice", StringComparison.OrdinalIgnoreCase)))
-        {
-            bullets.Add("Architected microservices-based systems with event-driven communication using RabbitMQ and Azure Service Bus");
-        }
-
-        if (vacancy.RequiredSkills.Any(s => s.Contains("Docker", StringComparison.OrdinalIgnoreCase) ||
-                                             s.Contains("Kubernetes", StringComparison.OrdinalIgnoreCase)))
-        {
-            bullets.Add("Containerized applications with Docker and orchestrated deployments using Kubernetes");
-        }
-
-        bullets.Add("Collaborated with product managers and designers to translate business requirements into technical solutions");
-        bullets.Add("Mentored junior developers through code reviews, pair programming, and knowledge-sharing sessions");
-
-        return bullets;
-    }
-
-    private static List<string> GenerateAtsKeywords(JobVacancy vacancy)
-    {
-        var keywords = new List<string>(vacancy.RequiredSkills);
-        keywords.AddRange(vacancy.PreferredSkills);
-        keywords.AddRange(["Software Engineer", "Backend", "Full Stack", vacancy.SeniorityLevel.ToString()]);
-
-        return keywords.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 }

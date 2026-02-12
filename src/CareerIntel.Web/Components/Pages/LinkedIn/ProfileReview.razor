@@ -1,0 +1,337 @@
+@page "/linkedin/profile"
+@inject DataDirectoryConfig DataDir
+@rendermode InteractiveServer
+
+<div class="page-header">
+    <h1 class="page-title">LinkedIn Profile Review</h1>
+    <p class="page-subtitle">Analyze your LinkedIn profile and get actionable improvement recommendations</p>
+</div>
+
+@* Import Section *@
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="form-row">
+        <div class="form-group" style="flex: 2;">
+            <label>LinkedIn export folder path</label>
+            <input type="text" @bind="_exportPath" placeholder="E:\chrome downloads\Basic_LinkedInDataExport..." />
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+            <button class="btn btn-primary" @onclick="AnalyzeProfile" disabled="@_analyzing">
+                @(_analyzing ? "Analyzing..." : "Analyze Profile")
+            </button>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <p class="@(_statusSuccess ? "text-green" : "text-red")" style="margin-top: 0.5rem;">@_statusMessage</p>
+    }
+</div>
+
+<LoadingSpinner Loading="_loading" Message="Analyzing profile..." />
+
+@if (!_loading && _analysis != null)
+{
+    @* Score Overview *@
+    <div class="card-grid" style="margin-bottom: 1.5rem;">
+        <StatCard Label="Headline Score" Value="@_headlineScore" Sub="out of 100" CssClass="@ScoreClass(_analysis.HeadlineScore)" />
+        <StatCard Label="Summary Score" Value="@_summaryScore" Sub="out of 100" CssClass="@ScoreClass(_analysis.SummaryScore)" />
+        <StatCard Label="Skills Score" Value="@_skillsScore" Sub="out of 100" CssClass="@ScoreClass(_analysis.SkillsScore)" />
+        <StatCard Label="Recruiter Network" Value="@_recruiterPct" Sub="of connections" />
+    </div>
+
+    <div class="card-grid" style="margin-bottom: 1.5rem;">
+        <StatCard Label="Total Connections" Value="@_totalConnections" />
+        <StatCard Label="Recruiter Connections" Value="@_recruiterConnections" CssClass="text-cyan" />
+        <StatCard Label="Proposals Found" Value="@_totalProposals" />
+        <StatCard Label="Avg Salary Offered" Value="@_avgSalary" CssClass="highlight-green" />
+    </div>
+
+    @* Current Profile *@
+    @if (_profile != null)
+    {
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">Current Profile</h3>
+            <div style="margin-bottom: 1rem;">
+                <label class="text-muted" style="font-size: 12px;">HEADLINE</label>
+                <p style="font-size: 14px; margin: 0.25rem 0;">@_profile.Headline</p>
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <label class="text-muted" style="font-size: 12px;">SUMMARY (first 500 chars)</label>
+                <p style="font-size: 13px; margin: 0.25rem 0; white-space: pre-wrap;">@TruncateText(_profile.Summary, 500)</p>
+            </div>
+            <div style="display: flex; gap: 2rem;">
+                <div>
+                    <label class="text-muted" style="font-size: 12px;">INDUSTRY</label>
+                    <p style="margin: 0.25rem 0;">@_profile.Industry</p>
+                </div>
+                <div>
+                    <label class="text-muted" style="font-size: 12px;">LOCATION</label>
+                    <p style="margin: 0.25rem 0;">@_profile.GeoLocation</p>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Critical Issues *@
+    @if (_analysis.HeadlineIssues.Count > 0 || _analysis.SummaryIssues.Count > 0 || _analysis.TitleIssues.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1.5rem; border-left: 3px solid var(--danger);">
+            <h3 class="card-title">Issues Found</h3>
+
+            @if (_analysis.TitleIssues.Count > 0)
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 style="color: var(--danger); margin-bottom: 0.5rem;">Experience Titles</h4>
+                    @foreach (var issue in _analysis.TitleIssues)
+                    {
+                        <div style="padding: 0.5rem; margin-bottom: 0.25rem; background: rgba(255,60,60,0.1); border-radius: 4px; font-size: 13px;">
+                            @issue
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_analysis.HeadlineIssues.Count > 0)
+            {
+                <div style="margin-bottom: 1rem;">
+                    <h4 style="color: var(--warning); margin-bottom: 0.5rem;">Headline</h4>
+                    @foreach (var issue in _analysis.HeadlineIssues)
+                    {
+                        <div style="padding: 0.5rem; margin-bottom: 0.25rem; background: rgba(255,200,0,0.1); border-radius: 4px; font-size: 13px;">
+                            @issue
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_analysis.SummaryIssues.Count > 0)
+            {
+                <div>
+                    <h4 style="color: var(--warning); margin-bottom: 0.5rem;">Summary</h4>
+                    @foreach (var issue in _analysis.SummaryIssues)
+                    {
+                        <div style="padding: 0.5rem; margin-bottom: 0.25rem; background: rgba(255,200,0,0.1); border-radius: 4px; font-size: 13px;">
+                            @issue
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @* Recommendations *@
+    @if (_analysis.Recommendations.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">Recommendations</h3>
+            @foreach (var rec in _analysis.Recommendations)
+            {
+                <div style="margin-bottom: 1.25rem; padding: 1rem; background: var(--bg-hover); border-radius: 6px; border-left: 3px solid @GetPriorityColor(rec.Priority);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <strong>@rec.Title</strong>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <StatusBadge Text="@rec.Category" Color="blue" />
+                            <StatusBadge Text="@rec.Priority" Color="@GetPriorityBadgeColor(rec.Priority)" />
+                        </div>
+                    </div>
+                    <div style="font-size: 13px; margin-bottom: 0.5rem;">
+                        <div style="color: var(--danger); margin-bottom: 0.25rem;">
+                            <strong>Current:</strong> @rec.CurrentState
+                        </div>
+                        <div style="color: var(--success);">
+                            <strong>Recommended:</strong> @rec.RecommendedState
+                        </div>
+                    </div>
+                    <div style="font-size: 12px; color: var(--accent);">
+                        Impact: @rec.Impact
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* Missing High-Value Skills *@
+    @if (_analysis.MissingHighValueSkills.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">Missing High-Value Skills</h3>
+            <p class="text-muted" style="margin-bottom: 0.75rem;">These skills appear in 70%+ of Staff/Principal job descriptions. Add them to your profile.</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                @foreach (var skill in _analysis.MissingHighValueSkills)
+                {
+                    <span class="badge" style="background: rgba(255,200,0,0.15); color: var(--warning); padding: 0.35rem 0.75rem;">+ @skill</span>
+                }
+            </div>
+        </div>
+    }
+
+    @* Position Titles *@
+    @if (_positions.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h3 class="card-title">LinkedIn Position Titles</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Company</th>
+                        <th>Current Title</th>
+                        <th>Recommended Title</th>
+                        <th>Dates</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var pos in _positions)
+                    {
+                        <tr>
+                            <td>@pos.Company</td>
+                            <td style="color: var(--danger);">@pos.Title</td>
+                            <td style="color: var(--success);">@GetRecommendedTitle(pos)</td>
+                            <td class="text-muted">@pos.StartDate - @(string.IsNullOrEmpty(pos.EndDate) ? "Present" : pos.EndDate)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @* Skills List *@
+    @if (_skills.Count > 0)
+    {
+        <div class="card">
+            <h3 class="card-title">Current Skills (@_skills.Count)</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                @foreach (var skill in _skills)
+                {
+                    <span class="badge">@skill</span>
+                }
+            </div>
+        </div>
+    }
+}
+else if (!_loading && _analysis == null)
+{
+    <div class="card">
+        <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+            Enter the path to your LinkedIn export folder and click "Analyze Profile" to get started.
+        </p>
+    </div>
+}
+
+@code {
+    private bool _loading;
+    private bool _analyzing;
+    private string _exportPath = "";
+    private string _statusMessage = "";
+    private bool _statusSuccess;
+
+    private LinkedInProfile? _profile;
+    private LinkedInProfileAnalysis? _analysis;
+    private List<string> _skills = [];
+    private List<LinkedInPosition> _positions = [];
+
+    // Stat values
+    private string _headlineScore = "0";
+    private string _summaryScore = "0";
+    private string _skillsScore = "0";
+    private string _recruiterPct = "0%";
+    private string _totalConnections = "0";
+    private string _recruiterConnections = "0";
+    private string _totalProposals = "0";
+    private string _avgSalary = "$0";
+
+    private async Task AnalyzeProfile()
+    {
+        if (string.IsNullOrWhiteSpace(_exportPath))
+        {
+            _statusMessage = "Please enter the path to your LinkedIn export folder.";
+            _statusSuccess = false;
+            return;
+        }
+
+        _analyzing = true;
+        _loading = true;
+        _statusMessage = "Parsing LinkedIn data...";
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var parser = new LinkedInDataParser(DataDir.Path);
+
+            _profile = await parser.ParseProfileAsync(Path.Combine(_exportPath, "Profile.csv"));
+            _skills = await parser.ParseSkillsAsync(Path.Combine(_exportPath, "Skills.csv"));
+            _positions = await parser.ParsePositionsAsync(Path.Combine(_exportPath, "Positions.csv"));
+            var connections = await parser.ParseConnectionsAsync(Path.Combine(_exportPath, "Connections.csv"));
+
+            // Load proposals from saved file or parse
+            var proposalsPath = Path.Combine(DataDir.Path, "linkedin-proposals.json");
+            List<LinkedInProposal> proposals;
+            if (File.Exists(proposalsPath))
+            {
+                var json = await File.ReadAllTextAsync(proposalsPath);
+                proposals = JsonSerializer.Deserialize<List<LinkedInProposal>>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+            }
+            else
+            {
+                proposals = await parser.ParseProposalsAsync(Path.Combine(_exportPath, "messages.csv"));
+            }
+
+            _analysis = parser.AnalyzeProfile(_profile, _skills, _positions, connections, proposals);
+
+            // Update stat values
+            _headlineScore = _analysis.HeadlineScore.ToString();
+            _summaryScore = _analysis.SummaryScore.ToString();
+            _skillsScore = _analysis.SkillsScore.ToString();
+            _recruiterPct = $"{_analysis.RecruiterPercentage:F1}%";
+            _totalConnections = _analysis.TotalConnections.ToString("N0");
+            _recruiterConnections = _analysis.RecruiterConnections.ToString();
+            _totalProposals = _analysis.TotalProposals.ToString();
+            _avgSalary = _analysis.AverageSalaryOffered > 0 ? $"${_analysis.AverageSalaryOffered:N0}" : "N/A";
+
+            _statusMessage = "Profile analysis complete.";
+            _statusSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Analysis failed: {ex.Message}";
+            _statusSuccess = false;
+        }
+        finally
+        {
+            _analyzing = false;
+            _loading = false;
+        }
+    }
+
+    private static string ScoreClass(int score) => score >= 70 ? "highlight-green" : score >= 40 ? "highlight-yellow" : "highlight-red";
+
+    private static string GetPriorityColor(string priority) => priority switch
+    {
+        "Critical" => "var(--danger)",
+        "High" => "var(--warning)",
+        _ => "var(--accent)",
+    };
+
+    private static string GetPriorityBadgeColor(string priority) => priority switch
+    {
+        "Critical" => "red",
+        "High" => "yellow",
+        _ => "blue",
+    };
+
+    private static string GetRecommendedTitle(LinkedInPosition pos)
+    {
+        if (string.IsNullOrEmpty(pos.EndDate) || pos.EndDate.Contains("Present", StringComparison.OrdinalIgnoreCase))
+            return "Senior Software Engineer / Tech Lead";
+        if (pos.StartDate.Contains("2020") || pos.StartDate.Contains("2021") || pos.StartDate.Contains("2022"))
+            return "Senior Software Engineer";
+        if (pos.StartDate.Contains("2018") || pos.StartDate.Contains("2019"))
+            return "Software Engineer";
+        return "Software Engineer";
+    }
+
+    private static string TruncateText(string text, int max)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return text.Length <= max ? text : text[..max] + "...";
+    }
+}

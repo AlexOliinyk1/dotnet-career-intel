@@ -17,6 +17,12 @@ public abstract class BaseScraper : IJobScraper
     private readonly ScrapingCompliance? _compliance;
     private readonly SemaphoreSlim _rateLimiter = new(1, 1);
 
+    // Circuit breaker state: if consecutive failures exceed threshold, stop trying
+    private int _consecutiveFailures;
+    private DateTimeOffset _circuitOpenUntil = DateTimeOffset.MinValue;
+    private const int CircuitBreakerThreshold = 5;
+    private static readonly TimeSpan CircuitBreakerCooldown = TimeSpan.FromMinutes(10);
+
     /// <summary>
     /// Minimum delay between requests to avoid detection and rate limiting.
     /// </summary>
@@ -54,6 +60,16 @@ public abstract class BaseScraper : IJobScraper
         string url,
         CancellationToken cancellationToken = default)
     {
+        // Circuit breaker: if open, skip request until cooldown expires
+        if (_consecutiveFailures >= CircuitBreakerThreshold &&
+            DateTimeOffset.UtcNow < _circuitOpenUntil)
+        {
+            _logger.LogWarning(
+                "[{Platform}] Circuit breaker OPEN ({Failures} consecutive failures), skipping {Url}. Retry after {Until}",
+                PlatformName, _consecutiveFailures, url, _circuitOpenUntil);
+            return null;
+        }
+
         await _rateLimiter.WaitAsync(cancellationToken);
         try
         {
@@ -89,15 +105,47 @@ public abstract class BaseScraper : IJobScraper
                 await Task.Delay(RequestDelay, cancellationToken);
             }
 
-            var response = await _httpClient.GetAsync(url, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            // Retry with exponential backoff
+            HttpResponseMessage? response = null;
+            for (var attempt = 0; attempt <= MaxRetries; attempt++)
             {
-                _logger.LogWarning(
-                    "[{Platform}] HTTP {StatusCode} for {Url}",
-                    PlatformName, response.StatusCode, url);
+                try
+                {
+                    response = await _httpClient.GetAsync(url, cancellationToken);
+                    if (response.IsSuccessStatusCode)
+                        break;
+
+                    _logger.LogWarning(
+                        "[{Platform}] HTTP {StatusCode} for {Url} (attempt {Attempt}/{MaxRetries})",
+                        PlatformName, response.StatusCode, url, attempt + 1, MaxRetries + 1);
+
+                    // Don't retry client errors (4xx) — only server errors (5xx) and rate limits (429)
+                    if (response.StatusCode != System.Net.HttpStatusCode.TooManyRequests &&
+                        (int)response.StatusCode < 500)
+                        break;
+                }
+                catch (HttpRequestException ex) when (attempt < MaxRetries)
+                {
+                    _logger.LogWarning(ex,
+                        "[{Platform}] Request error for {Url} (attempt {Attempt}/{MaxRetries}), retrying...",
+                        PlatformName, url, attempt + 1, MaxRetries + 1);
+                }
+
+                if (attempt < MaxRetries)
+                {
+                    var backoff = TimeSpan.FromSeconds(Math.Pow(2, attempt + 1)); // 2s, 4s, 8s
+                    await Task.Delay(backoff, cancellationToken);
+                }
+            }
+
+            if (response is null || !response.IsSuccessStatusCode)
+            {
+                RecordFailure();
                 return null;
             }
+
+            // Success — reset circuit breaker
+            Interlocked.Exchange(ref _consecutiveFailures, 0);
 
             var html = await response.Content.ReadAsStringAsync(cancellationToken);
             var document = new HtmlDocument();
@@ -108,11 +156,24 @@ public abstract class BaseScraper : IJobScraper
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "[{Platform}] Request failed for {Url}", PlatformName, url);
+            RecordFailure();
             return null;
         }
         finally
         {
             _rateLimiter.Release();
+        }
+    }
+
+    private void RecordFailure()
+    {
+        var failures = Interlocked.Increment(ref _consecutiveFailures);
+        if (failures >= CircuitBreakerThreshold)
+        {
+            _circuitOpenUntil = DateTimeOffset.UtcNow.Add(CircuitBreakerCooldown);
+            _logger.LogWarning(
+                "[{Platform}] Circuit breaker OPENED after {Failures} consecutive failures. Cooldown until {Until}",
+                PlatformName, failures, _circuitOpenUntil);
         }
     }
 

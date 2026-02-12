@@ -199,7 +199,7 @@ public sealed class DirectPositionChecker
                 }
             }
         }
-        catch
+        catch (Exception)
         {
             // Google search is best-effort fallback
         }
@@ -337,7 +337,7 @@ public sealed class DirectPositionChecker
 
             return response.IsSuccessStatusCode;
         }
-        catch
+        catch (Exception)
         {
             return false;
         }

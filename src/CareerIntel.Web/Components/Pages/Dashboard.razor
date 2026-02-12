@@ -1,6 +1,10 @@
 @page "/"
 @inject VacancyRepository VacancyRepo
+@inject InterviewRepository InterviewRepo
+@inject ProposalRepository ProposalRepo
 @inject DataDirectoryConfig DataDir
+@inject IMemoryCache Cache
+@inject ILogger<Dashboard> Logger
 
 <div class="page-header">
     <h1 class="page-title">Dashboard</h1>
@@ -11,70 +15,137 @@
 
 @if (!_loading)
 {
+    @* === First-Run Setup Wizard === *@
+    @if (_showSetupWizard)
+    {
+        <div class="card setup-wizard" style="margin-bottom: 1.5rem;">
+            <h2 class="card-title" style="color: var(--accent);">Welcome to CareerIntel</h2>
+            <p class="page-subtitle" style="margin-bottom: 1rem;">Complete these steps to get started:</p>
+
+            <div class="setup-step @GetStepClass(1)">
+                <div class="setup-step-number">@(_hasProfile ? "✓" : "1")</div>
+                <div style="flex: 1;">
+                    <strong>Set up your profile</strong>
+                    <div class="text-muted" style="font-size: 12px;">Add your skills, experience, and salary preferences</div>
+                </div>
+                @if (!_hasProfile)
+                {
+                    <a href="/settings/profile" class="btn btn-primary btn-sm">Set Up Profile</a>
+                }
+            </div>
+
+            <div class="setup-step @GetStepClass(2)">
+                <div class="setup-step-number">@(_hasVacancies ? "✓" : "2")</div>
+                <div style="flex: 1;">
+                    <strong>Run your first scan</strong>
+                    <div class="text-muted" style="font-size: 12px;">Scrape 24 job boards to find matching vacancies</div>
+                </div>
+                @if (!_hasVacancies && _hasProfile)
+                {
+                    <a href="/jobs" class="btn btn-primary btn-sm">Scan Jobs</a>
+                }
+            </div>
+
+            <div class="setup-step @GetStepClass(3)">
+                <div class="setup-step-number">@(_hasInterviews ? "✓" : "3")</div>
+                <div style="flex: 1;">
+                    <strong>Review matches and apply</strong>
+                    <div class="text-muted" style="font-size: 12px;">Evaluate vacancies and track your applications</div>
+                </div>
+                @if (_hasVacancies && !_hasInterviews)
+                {
+                    <a href="/applications/decisions" class="btn btn-primary btn-sm">Review Matches</a>
+                }
+            </div>
+        </div>
+    }
+
+    @* === Stat Cards === *@
     <div class="card-grid">
-        <StatCard Label="Total Vacancies" Value="@_vacancies.Count.ToString("N0")"
+        <StatCard Label="Total Vacancies" Value="@_vacancyCount.ToString("N0")"
                   Sub="@($"across {_platformCount} platforms")" />
         <StatCard Label="Remote Jobs" Value="@_remoteCount.ToString("N0")"
                   Sub="@($"{_remotePercent:F0}% of total")" CssClass="text-green" />
         <StatCard Label="Avg Salary" Value="@FormatSalary(_avgSalary)"
                   Sub="@($"{_salaryCount} jobs with salary data")" CssClass="text-cyan" />
-        <StatCard Label="Proposals Sent" Value="@_proposalCount.ToString("N0")"
-                  Sub="LinkedIn outreach" />
+        <StatCard Label="Proposals" Value="@_proposalCount.ToString("N0")"
+                  Sub="LinkedIn recruiter messages" />
         <StatCard Label="Interviews" Value="@_interviewCount.ToString("N0")"
                   Sub="Feedback recorded" CssClass="text-yellow" />
         <StatCard Label="Platforms" Value="@_platformCount.ToString()"
                   Sub="Active sources" />
     </div>
 
+    @* === Next Recommended Action === *@
+    @if (!string.IsNullOrEmpty(_nextAction))
+    {
+        <div class="card" style="margin-top: 1rem; border-left: 3px solid var(--accent);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                <div>
+                    <strong style="color: var(--accent);">Recommended next step:</strong>
+                    <span style="margin-left: 0.5rem;">@_nextAction</span>
+                </div>
+                <a href="@_nextActionHref" class="btn btn-primary btn-sm">@_nextActionLabel</a>
+            </div>
+        </div>
+    }
+
+    @* === Recent Vacancies === *@
     <div class="card" style="margin-top: 1.5rem;">
         <h2 class="card-title">Recent Vacancies</h2>
         @if (_recentVacancies.Count > 0)
         {
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        <th>Company</th>
-                        <th>Remote</th>
-                        <th>Seniority</th>
-                        <th>Platform</th>
-                        <th>Posted</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var v in _recentVacancies)
-                    {
+            <div class="table-scroll">
+                <table class="data-table" role="table" aria-label="Recent job vacancies">
+                    <thead>
                         <tr>
-                            <td><a href="/jobs/@v.Id" class="truncate">@v.Title</a></td>
-                            <td>@v.Company</td>
-                            <td>
-                                <StatusBadge Text="@v.RemotePolicy.ToString()"
-                                             Color="@StatusBadge.GetColorForStatus(v.RemotePolicy.ToString())" />
-                            </td>
-                            <td>@v.SeniorityLevel</td>
-                            <td><span class="badge">@v.SourcePlatform</span></td>
-                            <td class="text-muted">@v.PostedDate.ToString("MMM dd")</td>
+                            <th scope="col">Title</th>
+                            <th scope="col">Company</th>
+                            <th scope="col">Remote</th>
+                            <th scope="col">Seniority</th>
+                            <th scope="col">Platform</th>
+                            <th scope="col">Posted</th>
                         </tr>
-                    }
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in _recentVacancies)
+                        {
+                            <tr>
+                                <td><a href="/jobs/@v.Id" class="truncate">@v.Title</a></td>
+                                <td>@v.Company</td>
+                                <td>
+                                    <StatusBadge Text="@v.RemotePolicy.ToString()"
+                                                 Color="@StatusBadge.GetColorForStatus(v.RemotePolicy.ToString())" />
+                                </td>
+                                <td>@v.SeniorityLevel</td>
+                                <td><span class="badge">@v.SourcePlatform</span></td>
+                                <td class="text-muted">@v.PostedDate.ToString("MMM dd")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         }
         else
         {
-            <p class="text-muted">No vacancies found. Run a scan to get started.</p>
+            <div style="text-align: center; padding: 2rem;">
+                <p class="text-muted" style="margin-bottom: 1rem;">No vacancies found yet.</p>
+                <a href="/jobs" class="btn btn-primary">Scan 24 Job Boards Now</a>
+            </div>
         }
     </div>
 
+    @* === Quick Links + Platform Breakdown === *@
     <div class="card-grid" style="margin-top: 1.5rem;">
         <div class="card">
-            <h3 class="card-title">Quick Links</h3>
+            <h3 class="card-title">Quick Actions</h3>
             <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                 <a href="/jobs" class="btn btn-primary">Browse Jobs</a>
-                <a href="/jobs/tech-demand" class="btn">Tech Demand Analysis</a>
+                <a href="/applications/decisions" class="btn">Evaluate Vacancies</a>
                 <a href="/linkedin" class="btn">LinkedIn Proposals</a>
                 <a href="/applications" class="btn">Application Pipeline</a>
                 <a href="/interview/prep" class="btn">Interview Prep</a>
-                <a href="/learning" class="btn">Learning Plan</a>
+                <a href="/salary" class="btn">Salary Intelligence</a>
             </div>
         </div>
 
@@ -86,7 +157,7 @@
             }
             else
             {
-                <p class="text-muted">No platform data yet</p>
+                <p class="text-muted">No platform data yet. Run a scan to populate.</p>
             }
         </div>
     </div>
@@ -94,8 +165,8 @@
 
 @code {
     private bool _loading = true;
-    private List<JobVacancy> _vacancies = [];
     private List<JobVacancy> _recentVacancies = [];
+    private int _vacancyCount;
     private int _remoteCount;
     private double _remotePercent;
     private decimal _avgSalary;
@@ -105,66 +176,189 @@
     private int _interviewCount;
     private Dictionary<string, int> _platformBreakdown = [];
 
+    // Setup wizard state
+    private bool _showSetupWizard;
+    private bool _hasProfile;
+    private bool _hasVacancies;
+    private bool _hasInterviews;
+
+    // Next action recommendation
+    private string _nextAction = "";
+    private string _nextActionHref = "";
+    private string _nextActionLabel = "";
+
     protected override async Task OnInitializedAsync()
     {
-        _vacancies = await VacancyRepo.GetVacanciesAsync();
+        await CheckSetupState();
 
-        _recentVacancies = _vacancies
-            .OrderByDescending(v => v.ScrapedDate)
-            .Take(10)
-            .ToList();
+        // Use cached stats with 5-minute TTL
+        var stats = await Cache.GetOrCreateAsync("dashboard-stats", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+            return await ComputeStatsAsync();
+        });
 
-        _remoteCount = _vacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote);
-        _remotePercent = _vacancies.Count > 0
-            ? (double)_remoteCount / _vacancies.Count * 100
-            : 0;
+        if (stats is not null)
+        {
+            _vacancyCount = stats.VacancyCount;
+            _remoteCount = stats.RemoteCount;
+            _remotePercent = stats.RemotePercent;
+            _avgSalary = stats.AvgSalary;
+            _salaryCount = stats.SalaryCount;
+            _platformCount = stats.PlatformCount;
+            _platformBreakdown = stats.PlatformBreakdown;
+            _recentVacancies = stats.RecentVacancies;
+            _proposalCount = stats.ProposalCount;
+            _interviewCount = stats.InterviewCount;
+        }
 
-        var withSalary = _vacancies.Where(v => v.SalaryMin.HasValue).ToList();
-        _salaryCount = withSalary.Count;
-        _avgSalary = withSalary.Count > 0
-            ? withSalary.Average(v => v.SalaryMax.HasValue
-                ? (v.SalaryMin!.Value + v.SalaryMax.Value) / 2
-                : v.SalaryMin!.Value)
-            : 0;
-
-        _platformCount = _vacancies.Select(v => v.SourcePlatform).Distinct().Count();
-
-        _platformBreakdown = _vacancies
-            .GroupBy(v => v.SourcePlatform)
-            .OrderByDescending(g => g.Count())
-            .Take(8)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        // Load proposal count from linkedin-proposals.json
-        _proposalCount = await CountJsonArrayItemsAsync("linkedin-proposals.json");
-
-        // Load interview count from interview-feedback.json
-        _interviewCount = await CountJsonArrayItemsAsync("interview-feedback.json");
-
+        ComputeNextAction();
         _loading = false;
     }
 
-    private async Task<int> CountJsonArrayItemsAsync(string fileName)
+    private async Task<DashboardStats> ComputeStatsAsync()
     {
-        var path = Path.Combine(DataDir.Path, fileName);
-        if (!File.Exists(path))
-            return 0;
+        var (recentPage, totalCount) = await VacancyRepo.GetVacanciesPagedAsync(0, 10);
+
+        var platforms = await VacancyRepo.GetPlatformsAsync();
+        var proposalCount = (await ProposalRepo.GetAllAsync()).Count;
+
+        var interviewCount = 0;
+        try
+        {
+            interviewCount = (await InterviewRepo.GetAllFeedbackAsync()).Count;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load interview feedback for dashboard");
+        }
+
+        // For aggregates we still need all vacancies (until we add SQL aggregation)
+        var vacancies = await VacancyRepo.GetVacanciesAsync();
+        var remoteCount = vacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote);
+        var withSalary = vacancies.Where(v => v.SalaryMin.HasValue).ToList();
+
+        return new DashboardStats
+        {
+            VacancyCount = totalCount,
+            RemoteCount = remoteCount,
+            RemotePercent = totalCount > 0 ? (double)remoteCount / totalCount * 100 : 0,
+            AvgSalary = withSalary.Count > 0
+                ? withSalary.Average(v => v.SalaryMax.HasValue
+                    ? (v.SalaryMin!.Value + v.SalaryMax.Value) / 2
+                    : v.SalaryMin!.Value)
+                : 0,
+            SalaryCount = withSalary.Count,
+            PlatformCount = platforms.Count,
+            PlatformBreakdown = vacancies
+                .GroupBy(v => v.SourcePlatform)
+                .OrderByDescending(g => g.Count())
+                .Take(8)
+                .ToDictionary(g => g.Key, g => g.Count()),
+            RecentVacancies = recentPage,
+            ProposalCount = proposalCount,
+            InterviewCount = interviewCount
+        };
+    }
+
+    private async Task CheckSetupState()
+    {
+        // Check profile
+        var profilePath = Path.Combine(DataDir.Path, "my-profile.json");
+        if (File.Exists(profilePath))
+        {
+            try
+            {
+                var json = await File.ReadAllTextAsync(profilePath);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("personal", out var personal) &&
+                    personal.TryGetProperty("name", out var name) &&
+                    !string.IsNullOrWhiteSpace(name.GetString()))
+                {
+                    _hasProfile = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to parse user profile for setup wizard");
+            }
+        }
+
+        _hasVacancies = await VacancyRepo.GetCountAsync() > 0;
 
         try
         {
-            var json = await File.ReadAllTextAsync(path);
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-                return doc.RootElement.GetArrayLength();
+            var feedback = await InterviewRepo.GetAllFeedbackAsync();
+            _hasInterviews = feedback.Count > 0;
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently handle malformed JSON
+            Logger.LogWarning(ex, "Failed to load interview feedback for setup wizard");
         }
 
-        return 0;
+        _showSetupWizard = !_hasProfile || !_hasVacancies;
+    }
+
+    private void ComputeNextAction()
+    {
+        if (!_hasProfile)
+        {
+            _nextAction = "Set up your profile to enable accurate job matching";
+            _nextActionHref = "/settings/profile";
+            _nextActionLabel = "Set Up Profile";
+        }
+        else if (!_hasVacancies)
+        {
+            _nextAction = "Run your first scan to discover matching jobs across 24 boards";
+            _nextActionHref = "/jobs";
+            _nextActionLabel = "Scan Jobs";
+        }
+        else if (_proposalCount == 0)
+        {
+            _nextAction = "Import your LinkedIn messages to track recruiter proposals";
+            _nextActionHref = "/linkedin";
+            _nextActionLabel = "Import LinkedIn";
+        }
+        else if (_interviewCount == 0)
+        {
+            _nextAction = "Record interview feedback to build company intelligence";
+            _nextActionHref = "/interview/feedback";
+            _nextActionLabel = "Add Feedback";
+        }
+        // If everything is set up, show contextual suggestions
+        else if (_vacancyCount > 0)
+        {
+            _nextAction = "Review new vacancies and make GO/NO-GO decisions";
+            _nextActionHref = "/applications/decisions";
+            _nextActionLabel = "Review Now";
+        }
+    }
+
+    private string GetStepClass(int step)
+    {
+        return step switch
+        {
+            1 => _hasProfile ? "complete" : "current",
+            2 => _hasVacancies ? "complete" : (_hasProfile ? "current" : "pending"),
+            3 => _hasInterviews ? "complete" : (_hasVacancies ? "current" : "pending"),
+            _ => "pending"
+        };
     }
 
     private static string FormatSalary(decimal salary) =>
         salary > 0 ? $"${salary:N0}" : "N/A";
+
+    private sealed class DashboardStats
+    {
+        public int VacancyCount { get; init; }
+        public int RemoteCount { get; init; }
+        public double RemotePercent { get; init; }
+        public decimal AvgSalary { get; init; }
+        public int SalaryCount { get; init; }
+        public int PlatformCount { get; init; }
+        public Dictionary<string, int> PlatformBreakdown { get; init; } = [];
+        public List<JobVacancy> RecentVacancies { get; init; } = [];
+        public int ProposalCount { get; init; }
+        public int InterviewCount { get; init; }
+    }
 }

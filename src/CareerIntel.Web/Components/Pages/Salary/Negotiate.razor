@@ -1,10 +1,118 @@
 @page "/salary/negotiate"
+@using CareerIntel.Intelligence.Models
+@using CareerIntel.Matching
 @inject DataDirectoryConfig DataDir
+@inject CareerIntel.Web.Services.ToastService Toast
+@inject NegotiationIntelligenceEngine NegotiationIntelEngine
+@inject NegotiationEngine NegotiationEngine
+@inject NegotiationRepository NegotiationRepo
+@inject VacancyRepository VacancyRepo
 
 <div class="page-header">
     <h1 class="page-title">Negotiation & Offer Comparison</h1>
     <p class="page-subtitle">Analyze salary offers, get negotiation strategies, and compare multiple opportunities</p>
 </div>
+
+@if (!string.IsNullOrEmpty(_engineError))
+{
+    <div class="card" style="border-left: 3px solid var(--color-red, #e74c3c); margin-bottom: 1rem;">
+        <p style="color: var(--color-red, #e74c3c);"><strong>Engine Error:</strong> @_engineError</p>
+        <p class="text-muted">Some intelligence features may be unavailable.</p>
+    </div>
+}
+
+@* Historical Negotiation Intelligence *@
+@if (_historicalInsight is not null && _historicalInsight.TotalNegotiations > 0)
+{
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <h2 class="card-title">Historical Negotiation Intelligence</h2>
+        <div class="card-grid">
+            <StatCard Label="Total Negotiations" Value="@_historicalInsight.TotalNegotiations.ToString()"
+                      Sub="tracked outcomes" />
+            <StatCard Label="Success Rate" Value="@($"{_historicalInsight.SuccessRate:F0}%")"
+                      Sub="@($"{_historicalInsight.AcceptedCount} accepted, {_historicalInsight.RejectedCount} rejected")"
+                      CssClass="@(_historicalInsight.SuccessRate >= 50 ? "text-green" : "text-yellow")" />
+            <StatCard Label="Avg Lift" Value="@($"{_historicalInsight.AverageNegotiationLift:F1}%")"
+                      Sub="avg increase through negotiation" CssClass="text-cyan" />
+            <StatCard Label="Avg Delta" Value="@($"${_historicalInsight.AverageOfferDelta:N0}")"
+                      Sub="avg counter-offer gain" CssClass="text-green" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(_historicalInsight.LearnedStrategy))
+        {
+            <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-hover); border-radius: 6px;">
+                <strong>Learned Strategy:</strong>
+                <p style="margin-top: 0.5rem; line-height: 1.6;">@_historicalInsight.LearnedStrategy</p>
+            </div>
+        }
+
+        @if (_historicalInsight.SkillLeverageMap.Count > 0)
+        {
+            <div style="margin-top: 1rem;">
+                <h3 class="section-title">Skill Leverage Effectiveness</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Skill</th>
+                            <th>Times Used</th>
+                            <th>Success Rate</th>
+                            <th>Avg Lift</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var skill in _historicalInsight.SkillLeverageMap.Take(10))
+                        {
+                            <tr>
+                                <td><strong>@skill.SkillName</strong></td>
+                                <td>@skill.TimesUsedAsLeverage</td>
+                                <td class="@(skill.SuccessRate >= 60 ? "text-green" : skill.SuccessRate >= 40 ? "text-yellow" : "text-red")">
+                                    @skill.SuccessRate.ToString("F0")%
+                                </td>
+                                <td>$@skill.AverageLiftWhenUsed.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @if (_historicalInsight.StrategyHistory.Count > 0)
+        {
+            <div style="margin-top: 1rem;">
+                <h3 class="section-title">Strategy Outcome History</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Company</th>
+                            <th>Strategy</th>
+                            <th>Ask Delta</th>
+                            <th>Outcome</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var outcome in _historicalInsight.StrategyHistory.Take(10))
+                        {
+                            <tr>
+                                <td class="text-muted">@outcome.Date.ToString("MMM dd, yyyy")</td>
+                                <td><strong>@outcome.Company</strong></td>
+                                <td>
+                                    <StatusBadge Text="@outcome.StrategyType"
+                                                 Color="@GetStrategyColor(outcome.StrategyType)" />
+                                </td>
+                                <td>@outcome.AskDeltaPercent.ToString("F0")% ($@outcome.AskDelta.ToString("N0"))</td>
+                                <td>
+                                    <StatusBadge Text="@outcome.Outcome"
+                                                 Color="@GetOutcomeColor(outcome.Outcome)" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
 
 <div class="card">
     <h2 class="card-title">Add Offer</h2>
@@ -12,24 +120,24 @@
         <div class="form-group" style="flex: 1;">
             <label>Company</label>
             <input type="text" @bind="_newOffer.Company" placeholder="Company name"
-                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+                   class="form-input" />
         </div>
         <div class="form-group" style="flex: 1;">
             <label>Position</label>
             <input type="text" @bind="_newOffer.Position" placeholder="Job title"
-                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+                   class="form-input" />
         </div>
     </div>
     <div class="form-row">
         <div class="form-group" style="flex: 1;">
             <label>Offered Salary</label>
             <input type="number" @bind="_newOffer.Salary" placeholder="Annual salary"
-                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+                   class="form-input" />
         </div>
         <div class="form-group" style="flex: 0.5;">
             <label>Currency</label>
             <select @bind="_newOffer.Currency"
-                    style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;">
+                    class="form-input">
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
                 <option value="GBP">GBP</option>
@@ -42,7 +150,7 @@
         <div class="form-group" style="flex: 1;">
             <label>Remote Policy</label>
             <select @bind="_newOffer.RemotePolicy"
-                    style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;">
+                    class="form-input">
                 <option value="FullyRemote">Fully Remote</option>
                 <option value="Hybrid">Hybrid</option>
                 <option value="OnSite">On-Site</option>
@@ -51,19 +159,26 @@
         <div class="form-group" style="flex: 1;">
             <label>Benefits</label>
             <input type="text" @bind="_newOffer.Benefits" placeholder="Health, equity, PTO, etc. (comma separated)"
-                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+                   class="form-input" />
         </div>
     </div>
     <div class="form-row">
         <div class="form-group" style="flex: 1;">
             <label>Growth Potential (1-10)</label>
             <input type="number" @bind="_newOffer.GrowthPotential" min="1" max="10"
-                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+                   class="form-input" />
         </div>
         <div class="form-group" style="flex: 1;">
             <label>Tech Stack Quality (1-10)</label>
             <input type="number" @bind="_newOffer.TechStackQuality" min="1" max="10"
-                   style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+                   class="form-input" />
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group" style="flex: 1;">
+            <label>Market Rate (optional, for better analysis)</label>
+            <input type="number" @bind="_newOffer.MarketRate" placeholder="Market median salary for this role"
+                   class="form-input" />
         </div>
     </div>
     <div style="display: flex; gap: 1rem; margin-top: 1rem;">
@@ -72,8 +187,15 @@
             Add Offer
         </button>
         <button class="btn" @onclick="AnalyzeNegotiation"
-                disabled="@(string.IsNullOrWhiteSpace(_newOffer.Company) || _newOffer.Salary <= 0)">
-            Analyze Negotiation
+                disabled="@(string.IsNullOrWhiteSpace(_newOffer.Company) || _newOffer.Salary <= 0 || _analyzing)">
+            @if (_analyzing)
+            {
+                <span>Analyzing...</span>
+            }
+            else
+            {
+                <span>Analyze Negotiation</span>
+            }
         </button>
     </div>
 </div>
@@ -82,14 +204,85 @@
 {
     <div class="card" style="margin-top: 1.5rem;">
         <h2 class="card-title">Negotiation Strategy for @_analyzedOffer.Company</h2>
-        <div class="card-grid">
-            <StatCard Label="Offered Salary" Value="@FormatSalary(_analyzedOffer.Salary, _analyzedOffer.Currency)"
-                      Sub="@_analyzedOffer.Position" />
-            <StatCard Label="Suggested Counter" Value="@FormatSalary(GetSuggestedCounter(_analyzedOffer.Salary), _analyzedOffer.Currency)"
-                      Sub="10-20% above offer" CssClass="text-green" />
-            <StatCard Label="Walk-Away Point" Value="@FormatSalary(GetWalkAwayPoint(_analyzedOffer.Salary), _analyzedOffer.Currency)"
-                      Sub="minimum acceptable" CssClass="text-yellow" />
-        </div>
+
+        @* Engine-powered strategy *@
+        @if (_negotiationStrategy is not null)
+        {
+            <div class="card-grid">
+                <StatCard Label="Offered Salary" Value="@FormatSalary(_analyzedOffer.Salary, _analyzedOffer.Currency)"
+                          Sub="@_analyzedOffer.Position" />
+                <StatCard Label="Suggested Counter" Value="@FormatSalary(_negotiationStrategy.SuggestedCounter, _analyzedOffer.Currency)"
+                          Sub="@_negotiationStrategy.OverallAssessment" CssClass="text-green" />
+                <StatCard Label="BATNA Value" Value="@FormatSalary(_negotiationStrategy.BatnaValue, _analyzedOffer.Currency)"
+                          Sub="best alternative" CssClass="text-cyan" />
+                <StatCard Label="Should Negotiate" Value="@(_negotiationStrategy.ShouldNegotiate ? "Yes" : "No")"
+                          Sub="based on analysis" CssClass="@(_negotiationStrategy.ShouldNegotiate ? "text-green" : "text-yellow")" />
+            </div>
+
+            @* Risk Assessment *@
+            <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-hover); border-radius: 6px;">
+                <strong>Risk Assessment:</strong>
+                <p style="margin-top: 0.5rem;">@_negotiationStrategy.RiskAssessment</p>
+            </div>
+
+            @* Counter Justification *@
+            @if (!string.IsNullOrEmpty(_negotiationStrategy.CounterJustification))
+            {
+                <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-hover); border-radius: 6px;">
+                    <strong>Counter Justification:</strong>
+                    <p style="margin-top: 0.5rem; line-height: 1.6;">@_negotiationStrategy.CounterJustification</p>
+                </div>
+            }
+
+            @* Leverage Points *@
+            @if (_negotiationStrategy.LeveragePoints.Count > 0)
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 class="section-title">Your Leverage Points</h3>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        @foreach (var point in _negotiationStrategy.LeveragePoints)
+                        {
+                            <div class="stat-card" style="padding: 0.75rem;">
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <StatusBadge Text="Leverage" Color="green" />
+                                    <span>@point</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* Negotiation Script *@
+            @if (!string.IsNullOrEmpty(_negotiationStrategy.NegotiationScript))
+            {
+                <div style="margin-top: 1rem;">
+                    <h3 class="section-title">Negotiation Script</h3>
+                    <div style="padding: 1rem; background: var(--bg-secondary, #1e1e1e); border-radius: 6px; border-left: 3px solid var(--color-cyan, #00bcd4); white-space: pre-wrap; line-height: 1.6;">@_negotiationStrategy.NegotiationScript</div>
+                </div>
+            }
+
+            @* Counter-Strategy from Intelligence Engine *@
+            @if (!string.IsNullOrEmpty(_counterStrategy))
+            {
+                <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-hover); border-radius: 6px; border-left: 3px solid var(--color-green, #2ecc71);">
+                    <strong>Intelligence-Driven Counter Strategy:</strong>
+                    <p style="margin-top: 0.5rem; line-height: 1.6;">@_counterStrategy</p>
+                </div>
+            }
+        }
+        else
+        {
+            @* Fallback: basic analysis when engine strategy is not available *@
+            <div class="card-grid">
+                <StatCard Label="Offered Salary" Value="@FormatSalary(_analyzedOffer.Salary, _analyzedOffer.Currency)"
+                          Sub="@_analyzedOffer.Position" />
+                <StatCard Label="Suggested Counter" Value="@FormatSalary(GetSuggestedCounter(_analyzedOffer.Salary), _analyzedOffer.Currency)"
+                          Sub="10-20% above offer" CssClass="text-green" />
+                <StatCard Label="Walk-Away Point" Value="@FormatSalary(GetWalkAwayPoint(_analyzedOffer.Salary), _analyzedOffer.Currency)"
+                          Sub="minimum acceptable" CssClass="text-yellow" />
+            </div>
+        }
 
         <div style="margin-top: 1.5rem;">
             <h3 class="section-title">Negotiation Tips</h3>
@@ -255,7 +448,7 @@
             </div>
             <div class="stat-card">
                 <h4 class="section-title">2. Analyze</h4>
-                <p>Click "Analyze Negotiation" to get counter-offer strategies and talking points.</p>
+                <p>Click "Analyze Negotiation" to get counter-offer strategies and talking points powered by historical intelligence.</p>
             </div>
             <div class="stat-card">
                 <h4 class="section-title">3. Compare</h4>
@@ -275,7 +468,58 @@
     private List<OfferEntry> _offers = [];
     private OfferEntry? _bestOffer;
     private bool _showNegotiation;
+    private bool _analyzing;
     private OfferInput _analyzedOffer = new();
+    private string? _engineError;
+
+    // Engine-powered data
+    private NegotiationInsight? _historicalInsight;
+    private NegotiationStrategy? _negotiationStrategy;
+    private string? _counterStrategy;
+
+    // Cached data for engine calls
+    private List<NegotiationState> _historicalNegotiations = [];
+    private List<JobVacancy> _marketData = [];
+    private UserProfile _userProfile = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Load historical negotiations, market data, and profile in parallel
+            var negotiationsTask = LoadNegotiations();
+            var vacanciesTask = VacancyRepo.GetVacanciesAsync();
+            var profileTask = LoadProfile();
+
+            await Task.WhenAll(negotiationsTask, vacanciesTask, profileTask);
+
+            _historicalNegotiations = negotiationsTask.Result;
+            _marketData = vacanciesTask.Result;
+            _userProfile = profileTask.Result;
+
+            // Generate historical insight from the intelligence engine
+            if (_historicalNegotiations.Count > 0)
+            {
+                _historicalInsight = NegotiationIntelEngine.AnalyzeHistory(_historicalNegotiations);
+            }
+        }
+        catch (Exception ex)
+        {
+            _engineError = $"Failed to load intelligence data: {ex.Message}";
+        }
+    }
+
+    private async Task<List<NegotiationState>> LoadNegotiations()
+    {
+        try
+        {
+            return await NegotiationRepo.GetAllAsync();
+        }
+        catch
+        {
+            return [];
+        }
+    }
 
     private void AddOffer()
     {
@@ -298,14 +542,20 @@
         _offers.Add(entry);
         _bestOffer = _offers.OrderByDescending(o => o.OverallScore).First();
 
+        Toast.Success($"Offer from {entry.Company} added (score: {entry.OverallScore}/100)");
+
         // Reset form
         _newOffer = new OfferInput();
     }
 
-    private void AnalyzeNegotiation()
+    private async Task AnalyzeNegotiation()
     {
         if (string.IsNullOrWhiteSpace(_newOffer.Company) || _newOffer.Salary <= 0)
             return;
+
+        _analyzing = true;
+        _negotiationStrategy = null;
+        _counterStrategy = null;
 
         _analyzedOffer = new OfferInput
         {
@@ -316,10 +566,48 @@
             RemotePolicy = _newOffer.RemotePolicy,
             Benefits = _newOffer.Benefits,
             GrowthPotential = _newOffer.GrowthPotential,
-            TechStackQuality = _newOffer.TechStackQuality
+            TechStackQuality = _newOffer.TechStackQuality,
+            MarketRate = _newOffer.MarketRate
         };
 
         _showNegotiation = true;
+
+        try
+        {
+            // Build a NegotiationState from the form input for engine analysis
+            var offerState = new NegotiationState
+            {
+                Company = _analyzedOffer.Company,
+                Role = _analyzedOffer.Position,
+                OfferedSalary = _analyzedOffer.Salary,
+                OfferedCurrency = _analyzedOffer.Currency,
+                MarketRate = _analyzedOffer.MarketRate,
+                Status = "Pending",
+                ReceivedDate = DateTimeOffset.UtcNow,
+                Leverage = new List<string>()
+            };
+
+            // Use NegotiationEngine for full strategy analysis
+            _negotiationStrategy = NegotiationEngine.AnalyzeOffer(
+                offerState,
+                _historicalNegotiations,
+                _userProfile,
+                _marketData);
+
+            // Use NegotiationIntelligenceEngine for counter-strategy based on history
+            if (_historicalInsight is not null && _historicalInsight.TotalNegotiations > 0)
+            {
+                _counterStrategy = NegotiationIntelEngine.GenerateCounterStrategy(offerState, _historicalInsight);
+            }
+        }
+        catch (Exception ex)
+        {
+            _engineError = $"Negotiation analysis failed: {ex.Message}";
+        }
+        finally
+        {
+            _analyzing = false;
+        }
     }
 
     private void RemoveOffer(OfferEntry offer)
@@ -328,12 +616,35 @@
         _bestOffer = _offers.Count > 0
             ? _offers.OrderByDescending(o => o.OverallScore).First()
             : null;
+        Toast.Info($"Removed offer from {offer.Company}");
+    }
+
+    private async Task<UserProfile> LoadProfile()
+    {
+        var profilePath = Path.Combine(DataDir.Path, "my-profile.json");
+
+        if (File.Exists(profilePath))
+        {
+            var json = await File.ReadAllTextAsync(profilePath);
+            return System.Text.Json.JsonSerializer.Deserialize<UserProfile>(json,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? new UserProfile();
+        }
+
+        return new UserProfile();
     }
 
     private static int CalculateOverallScore(OfferInput offer)
     {
-        // Salary score (0-40 points) - normalized around 100K USD baseline
-        var salaryScore = Math.Min((int)(offer.Salary / 2500m), 40);
+        // Salary score (0-40 points) - scaled for $50K-$350K range
+        var salaryScore = offer.Salary switch
+        {
+            >= 300_000m => 40,
+            >= 200_000m => 33 + (int)((offer.Salary - 200_000m) / 100_000m * 7),
+            >= 150_000m => 28 + (int)((offer.Salary - 150_000m) / 50_000m * 5),
+            >= 100_000m => 20 + (int)((offer.Salary - 100_000m) / 50_000m * 8),
+            _ => Math.Min((int)(offer.Salary / 5_000m), 20)
+        };
 
         // Remote score (0-15 points)
         var remoteScore = offer.RemotePolicy switch
@@ -420,6 +731,36 @@
             });
         }
 
+        // High-salary specific tips ($150K+)
+        if (offer.Salary >= 150_000m)
+        {
+            tips.Add(new NegotiationTip
+            {
+                Category = "Senior",
+                Color = "cyan",
+                Title = "Leverage your seniority",
+                Description = "At this level, emphasize architectural decisions, team leadership, and revenue impact you've delivered. Quantify: 'I reduced deployment time by 60%' or 'I architected a system handling 10M+ requests/day.'"
+            });
+            tips.Add(new NegotiationTip
+            {
+                Category = "Equity",
+                Color = "yellow",
+                Title = "Negotiate equity/RSU",
+                Description = $"At ${offer.Salary:N0}, equity can add 20-50% to total comp. Ask about RSU vesting schedule, refresh grants, and stock option strike price. Target total comp of ${offer.Salary * 1.3m:N0}-${offer.Salary * 1.5m:N0}."
+            });
+        }
+
+        if (offer.Salary >= 200_000m)
+        {
+            tips.Add(new NegotiationTip
+            {
+                Category = "Executive",
+                Color = "red",
+                Title = "Request signing bonus",
+                Description = "At this comp level, signing bonuses of $20K-$50K are common. Frame as compensation for unvested equity at your current company."
+            });
+        }
+
         tips.Add(new NegotiationTip
         {
             Category = "Close",
@@ -439,6 +780,21 @@
         _ => "text-red"
     };
 
+    private static string GetStrategyColor(string strategyType) => strategyType switch
+    {
+        "Aggressive" => "red",
+        "Moderate" => "yellow",
+        "Conservative" => "green",
+        _ => "gray"
+    };
+
+    private static string GetOutcomeColor(string outcome) => outcome switch
+    {
+        "Accepted" => "green",
+        "Rejected" => "red",
+        _ => "gray"
+    };
+
     private sealed class OfferInput
     {
         public string Company { get; set; } = string.Empty;
@@ -449,6 +805,7 @@
         public string Benefits { get; set; } = string.Empty;
         public int GrowthPotential { get; set; } = 5;
         public int TechStackQuality { get; set; } = 5;
+        public decimal MarketRate { get; set; }
     }
 
     private sealed class OfferEntry

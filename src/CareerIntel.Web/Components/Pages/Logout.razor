@@ -1,0 +1,25 @@
+@page "/logout"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+
+<div class="login-wrapper">
+    <div class="login-card">
+        <div class="login-brand">
+            <span class="brand-icon" aria-hidden="true">CI</span>
+            <span class="brand-text">CareerIntel</span>
+        </div>
+        <p class="login-subtitle">Signing out...</p>
+    </div>
+</div>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Redirect to the server-side logout endpoint to clear the cookie
+            Navigation.NavigateTo("/api/auth/logout", forceLoad: true);
+        }
+    }
+}

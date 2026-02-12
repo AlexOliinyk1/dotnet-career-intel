@@ -1,5 +1,7 @@
 @page "/companies"
 @inject VacancyRepository VacancyRepo
+@inject CompanyDiscoveryEngine DiscoveryEngine
+@inject CompanyRepository CompanyRepo
 
 <div class="page-header">
     <h1 class="page-title">Company Discovery</h1>
@@ -13,10 +15,27 @@
             <input type="text" @bind="_searchText" @bind:event="oninput"
                    placeholder="Filter by company name..." />
         </div>
+        <div class="form-group">
+            <label>Tech Stack Filter</label>
+            <input type="text" @bind="_techFilter" @bind:event="oninput"
+                   placeholder="e.g. C#, Azure, Docker..." />
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+            <button class="btn btn-primary" @onclick="RunDiscovery" disabled="@_discovering">
+                @(_discovering ? "Discovering..." : "Run Discovery")
+            </button>
+        </div>
     </div>
 </div>
 
 <LoadingSpinner Loading="@_loading" Message="Loading companies..." />
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="card" style="margin-bottom: 1rem; border-color: var(--red);">
+        <p style="color: var(--red);">@_errorMessage</p>
+    </div>
+}
 
 @if (!_loading)
 {
@@ -24,8 +43,18 @@
         <StatCard Label="Total Companies" Value="@_companyRows.Count.ToString()" />
         <StatCard Label="Total Jobs" Value="@_allVacancies.Count.ToString()" />
         <StatCard Label="Avg Remote %" Value="@($"{OverallRemotePercent:F0}%")" />
-        <StatCard Label="With Salary Data" Value="@_companyRows.Count(r => r.AvgSalary > 0).ToString()" />
+        <StatCard Label="Confirmed UA Hiring" Value="@_discoveredCompanies.Count(c => c.ConfirmedUkraineHiring).ToString()" />
     </div>
+
+    @if (_discoveredCompanies.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <h2 class="card-title">Top Discovered Companies (by composite score)</h2>
+            <p class="text-muted" style="margin-bottom: 0.75rem;">
+                @_discoveredCompanies.Count discovered, @_persistedProfiles.Count with persisted profiles
+            </p>
+        </div>
+    }
 
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
@@ -50,13 +79,20 @@
                         Avg Salary @SortIndicator(nameof(CompanyRow.AvgSalary))
                     </th>
                     <th>Platforms</th>
+                    <th>Profile</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var row in PagedCompanies)
                 {
                     <tr @onclick="() => NavigateToJobs(row.CompanyName)" style="cursor: pointer;">
-                        <td><strong>@row.CompanyName</strong></td>
+                        <td>
+                            <strong>@row.CompanyName</strong>
+                            @if (row.ConfirmedUkraineHiring)
+                            {
+                                <StatusBadge Text="UA" Color="green" />
+                            }
+                        </td>
                         <td class="text-cyan">@row.JobCount</td>
                         <td>
                             <StatusBadge Text="@($"{row.RemotePercent:F0}%")"
@@ -71,26 +107,33 @@
                                 <span class="badge" style="margin-right: 0.25rem;">@platform</span>
                             }
                         </td>
+                        <td>
+                            @if (row.HasPersistedProfile)
+                            {
+                                <StatusBadge Text="Saved" Color="cyan" />
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
         </table>
 
-        @if (TotalPages > 1)
-        {
-            <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
-                <button class="btn" disabled="@(_currentPage == 0)" @onclick="PreviousPage">Previous</button>
-                @for (var i = PaginationStart; i <= PaginationEnd; i++)
-                {
-                    var pageIndex = i;
-                    <button class="btn @(pageIndex == _currentPage ? "btn-primary" : "")"
-                            @onclick="() => GoToPage(pageIndex)">
-                        @(pageIndex + 1)
-                    </button>
-                }
-                <button class="btn" disabled="@(_currentPage >= TotalPages - 1)" @onclick="NextPage">Next</button>
-            </div>
-        }
+        <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+            <button class="btn" disabled="@(_currentPage == 0)" @onclick="PreviousPage">Previous</button>
+            @for (var i = PaginationStart; i <= PaginationEnd; i++)
+            {
+                var pageIndex = i;
+                <button class="btn @(pageIndex == _currentPage ? "btn-primary" : "")"
+                        @onclick="() => GoToPage(pageIndex)">
+                    @(pageIndex + 1)
+                </button>
+            }
+            <button class="btn" disabled="@(_currentPage >= TotalPages - 1)" @onclick="NextPage">Next</button>
+        </div>
     </div>
 }
 
@@ -100,10 +143,15 @@
     private const int PageSize = 25;
 
     private bool _loading = true;
+    private bool _discovering;
+    private string? _errorMessage;
     private List<JobVacancy> _allVacancies = [];
     private List<CompanyRow> _companyRows = [];
+    private List<UkraineFriendlyCompany> _discoveredCompanies = [];
+    private List<CompanyProfile> _persistedProfiles = [];
     private int _currentPage;
     private string _searchText = "";
+    private string _techFilter = "";
     private string _sortColumn = nameof(CompanyRow.JobCount);
     private bool _sortDescending = true;
 
@@ -121,6 +169,20 @@
             {
                 var search = _searchText.Trim();
                 query = query.Where(r => r.CompanyName.Contains(search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_techFilter))
+            {
+                var skills = _techFilter.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => s.Length > 0)
+                    .ToList();
+
+                if (skills.Count > 0)
+                {
+                    query = query.Where(r => r.TechStack.Any(t =>
+                        skills.Any(s => t.Contains(s, StringComparison.OrdinalIgnoreCase))));
+                }
             }
 
             query = _sortColumn switch
@@ -154,33 +216,104 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _allVacancies = await VacancyRepo.GetVacanciesAsync();
+        try
+        {
+            _allVacancies = await VacancyRepo.GetVacanciesAsync();
+            _persistedProfiles = await CompanyRepo.GetAllAsync();
 
-        _companyRows = _allVacancies
-            .GroupBy(v => v.Company, StringComparer.OrdinalIgnoreCase)
-            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
-            .Select(g =>
-            {
-                var vacancies = g.ToList();
-                var withSalary = vacancies.Where(v => v.SalaryMin.HasValue).ToList();
-                var avgSalary = withSalary.Count > 0
-                    ? withSalary.Average(v => v.SalaryMax.HasValue
-                        ? (double)(v.SalaryMin!.Value + v.SalaryMax.Value) / 2
-                        : (double)v.SalaryMin!.Value)
-                    : 0;
+            // Use CompanyDiscoveryEngine to discover companies from vacancies
+            _discoveredCompanies = DiscoveryEngine.DiscoverFromVacancies(_allVacancies);
 
-                return new CompanyRow
+            var profileLookup = _persistedProfiles
+                .ToDictionary(p => p.Name, p => p, StringComparer.OrdinalIgnoreCase);
+
+            _companyRows = _discoveredCompanies
+                .Select(c =>
                 {
-                    CompanyName = g.Key,
-                    JobCount = vacancies.Count,
-                    RemotePercent = vacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote) * 100.0 / vacancies.Count,
-                    AvgSalary = avgSalary,
-                    Platforms = vacancies.Select(v => v.SourcePlatform).Distinct().OrderBy(p => p).ToList()
-                };
-            })
-            .ToList();
+                    return new CompanyRow
+                    {
+                        CompanyName = c.Name,
+                        JobCount = c.VacancyCount,
+                        RemotePercent = c.VacancyCount > 0
+                            ? c.RemoteVacancyCount * 100.0 / c.VacancyCount
+                            : 0,
+                        AvgSalary = c.AvgSalaryMin.HasValue
+                            ? (double)((c.AvgSalaryMin.Value + (c.AvgSalaryMax ?? c.AvgSalaryMin.Value)) / 2)
+                            : 0,
+                        Platforms = c.Sources,
+                        TechStack = c.TechStack,
+                        ConfirmedUkraineHiring = c.ConfirmedUkraineHiring,
+                        HasPersistedProfile = profileLookup.ContainsKey(c.Name)
+                    };
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load company data: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
 
-        _loading = false;
+    private async Task RunDiscovery()
+    {
+        _discovering = true;
+        _errorMessage = null;
+
+        try
+        {
+            _allVacancies = await VacancyRepo.GetVacanciesAsync();
+            var discovered = DiscoveryEngine.DiscoverFromVacancies(_allVacancies);
+
+            // Merge with previously discovered data
+            _discoveredCompanies = DiscoveryEngine.MergeWithExisting(_discoveredCompanies, discovered);
+
+            // Apply tech stack filter if provided
+            if (!string.IsNullOrWhiteSpace(_techFilter))
+            {
+                var skills = _techFilter.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => s.Length > 0);
+
+                _discoveredCompanies = DiscoveryEngine.FilterByTechStack(_discoveredCompanies, skills);
+            }
+
+            // Reload persisted profiles
+            _persistedProfiles = await CompanyRepo.GetAllAsync();
+            var profileLookup = _persistedProfiles
+                .ToDictionary(p => p.Name, p => p, StringComparer.OrdinalIgnoreCase);
+
+            _companyRows = _discoveredCompanies
+                .Select(c => new CompanyRow
+                {
+                    CompanyName = c.Name,
+                    JobCount = c.VacancyCount,
+                    RemotePercent = c.VacancyCount > 0
+                        ? c.RemoteVacancyCount * 100.0 / c.VacancyCount
+                        : 0,
+                    AvgSalary = c.AvgSalaryMin.HasValue
+                        ? (double)((c.AvgSalaryMin.Value + (c.AvgSalaryMax ?? c.AvgSalaryMin.Value)) / 2)
+                        : 0,
+                    Platforms = c.Sources,
+                    TechStack = c.TechStack,
+                    ConfirmedUkraineHiring = c.ConfirmedUkraineHiring,
+                    HasPersistedProfile = profileLookup.ContainsKey(c.Name)
+                })
+                .ToList();
+
+            _currentPage = 0;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Discovery failed: {ex.Message}";
+        }
+        finally
+        {
+            _discovering = false;
+        }
     }
 
     private void SortBy(string column)
@@ -217,5 +350,8 @@
         public double RemotePercent { get; set; }
         public double AvgSalary { get; set; }
         public List<string> Platforms { get; set; } = [];
+        public List<string> TechStack { get; set; } = [];
+        public bool ConfirmedUkraineHiring { get; set; }
+        public bool HasPersistedProfile { get; set; }
     }
 }

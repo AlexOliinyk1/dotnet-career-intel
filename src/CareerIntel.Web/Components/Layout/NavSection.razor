@@ -1,6 +1,8 @@
-<div class="nav-section">
-    <div class="nav-section-title">@Title</div>
-    @ChildContent
+<div class="nav-section" role="group" aria-label="@Title">
+    <div class="nav-section-title" id="nav-@Title.ToLowerInvariant().Replace(" ", "-")">@Title</div>
+    <div role="list" aria-labelledby="nav-@Title.ToLowerInvariant().Replace(" ", "-")">
+        @ChildContent
+    </div>
 </div>
 
 @code {

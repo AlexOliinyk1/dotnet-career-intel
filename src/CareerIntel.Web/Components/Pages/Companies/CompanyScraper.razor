@@ -1,0 +1,336 @@
+@page "/companies/scrape"
+@inject VacancyRepository VacancyRepo
+@inject CompanyIntelligenceEngine IntelEngine
+@inject CompanyRepository CompanyRepo
+@inject InterviewRepository InterviewRepo
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Company Scraper</h1>
+    <p class="page-subtitle">Search job vacancies by company name and generate intelligence reports</p>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+    <div class="form-row">
+        <div class="form-group">
+            <label>Company Name</label>
+            <input type="text" @bind="_companySearch" @bind:event="oninput"
+                   placeholder="Enter company name to search..." />
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+            <button class="btn btn-primary" @onclick="SearchCompany"
+                    disabled="@(string.IsNullOrWhiteSpace(_companySearch) || _searching)">
+                @(_searching ? "Searching..." : "Search")
+            </button>
+        </div>
+    </div>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading vacancy data..." />
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="card" style="margin-bottom: 1rem; border-color: var(--red);">
+        <p style="color: var(--red);">@_errorMessage</p>
+    </div>
+}
+
+@if (!_loading && _searched)
+{
+    @if (_matchedVacancies.Count > 0)
+    {
+        <div class="card-grid" style="margin-bottom: 1rem;">
+            <StatCard Label="Jobs Found" Value="@_matchedVacancies.Count.ToString()" />
+            <StatCard Label="Remote %"
+                      Value="@($"{RemotePercent:F0}%")"
+                      CssClass="@(RemotePercent >= 80 ? "stat-success" : "")" />
+            <StatCard Label="Platforms" Value="@PlatformCount.ToString()" />
+            <StatCard Label="Avg Salary" Value="@FormatSalary(AvgSalary)" />
+        </div>
+
+        @* Intelligence Report Section *@
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h2 class="card-title" style="margin-bottom: 0;">Intelligence Report</h2>
+                <button class="btn btn-primary" @onclick="GenerateReport"
+                        disabled="@_generatingReport">
+                    @(_generatingReport ? "Generating..." : "Generate Report")
+                </button>
+            </div>
+
+            @if (_report is not null)
+            {
+                <div class="card-grid" style="margin-bottom: 1rem;">
+                    <StatCard Label="Hiring Velocity"
+                              Value="@($"{_report.HiringVelocity:F1}/mo")"
+                              Sub="avg vacancies per month" />
+                    <StatCard Label="Avg Difficulty"
+                              Value="@($"{_report.AverageDifficulty:F1}/10")"
+                              CssClass="@(_report.AverageDifficulty >= 8 ? "text-red" : _report.AverageDifficulty >= 5 ? "text-yellow" : "text-green")" />
+                    <StatCard Label="Pass Rate"
+                              Value="@($"{_report.PassRate:F0}%")"
+                              CssClass="@(_report.PassRate >= 50 ? "text-green" : "text-red")" />
+                    <StatCard Label="Feedback Entries"
+                              Value="@_report.FeedbackCount.ToString()" />
+                </div>
+
+                @if (_report.SalaryRangeMin.HasValue)
+                {
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Salary Range:</strong>
+                        <span class="text-cyan">
+                            @_report.SalaryCurrency @($"{_report.SalaryRangeMin:N0}") - @($"{_report.SalaryRangeMax:N0}")
+                        </span>
+                    </div>
+                }
+
+                @if (_report.TopSkills.Count > 0)
+                {
+                    <div style="margin-bottom: 1rem;">
+                        <h3 class="section-title">Top Required Skills</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                            @foreach (var skill in _report.TopSkills)
+                            {
+                                <span class="badge">@skill</span>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_report.SeniorityDistribution.Count > 0)
+                {
+                    <div style="margin-bottom: 1rem;">
+                        <h3 class="section-title">Seniority Distribution</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                            @foreach (var (level, count) in _report.SeniorityDistribution)
+                            {
+                                <StatusBadge Text="@($"{level}: {count}")" Color="cyan" />
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_report.RemotePolicyDistribution.Count > 0)
+                {
+                    <div style="margin-bottom: 1rem;">
+                        <h3 class="section-title">Remote Policy</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                            @foreach (var (policy, count) in _report.RemotePolicyDistribution)
+                            {
+                                <StatusBadge Text="@($"{policy}: {count}")"
+                                             Color="@StatusBadge.GetColorForStatus(policy)" />
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_report.CommonWeakAreas.Count > 0)
+                {
+                    <div style="margin-bottom: 1rem;">
+                        <h3 class="section-title">Common Weak Areas (from feedback)</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                            @foreach (var area in _report.CommonWeakAreas)
+                            {
+                                <StatusBadge Text="@area" Color="red" />
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(_report.Recommendation))
+                {
+                    <div style="border-left: 3px solid var(--color-cyan); padding-left: 1rem; margin-top: 1rem;">
+                        <h3 class="section-title">Recommendation</h3>
+                        <p>@_report.Recommendation</p>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h2 class="section-title" style="margin-bottom: 0;">
+                    Results for "@_companySearch"
+                </h2>
+                <span class="text-muted">@_matchedVacancies.Count jobs found</span>
+            </div>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Remote Policy</th>
+                        <th>Seniority</th>
+                        <th>Salary</th>
+                        <th>Platform</th>
+                        <th>Posted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in _matchedVacancies)
+                    {
+                        <tr>
+                            <td class="truncate" style="max-width: 280px;">
+                                <a href="/jobs/@v.Id">@v.Title</a>
+                            </td>
+                            <td>
+                                <StatusBadge Text="@v.RemotePolicy.ToString()"
+                                             Color="@StatusBadge.GetColorForStatus(v.RemotePolicy.ToString())" />
+                            </td>
+                            <td>@v.SeniorityLevel</td>
+                            <td class="text-cyan">
+                                @FormatVacancySalary(v)
+                            </td>
+                            <td><span class="badge">@v.SourcePlatform</span></td>
+                            <td class="text-muted">@v.PostedDate.ToString("MMM dd, yyyy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <p class="text-muted" style="text-align: center; padding: 2rem;">
+                No jobs found for "@_companySearch". Try a different company name or partial match.
+            </p>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private bool _searching;
+    private bool _searched;
+    private bool _generatingReport;
+    private string _companySearch = "";
+    private string? _errorMessage;
+
+    private List<JobVacancy> _allVacancies = [];
+    private List<JobVacancy> _matchedVacancies = [];
+    private CompanyIntelligenceReport? _report;
+
+    private double RemotePercent => _matchedVacancies.Count > 0
+        ? _matchedVacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote) * 100.0 / _matchedVacancies.Count
+        : 0;
+
+    private int PlatformCount => _matchedVacancies
+        .Select(v => v.SourcePlatform)
+        .Distinct()
+        .Count();
+
+    private decimal AvgSalary
+    {
+        get
+        {
+            var withSalary = _matchedVacancies.Where(v => v.SalaryMin.HasValue).ToList();
+            if (withSalary.Count == 0)
+                return 0;
+
+            return withSalary.Average(v => v.SalaryMax.HasValue
+                ? (v.SalaryMin!.Value + v.SalaryMax.Value) / 2
+                : v.SalaryMin!.Value);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _allVacancies = await VacancyRepo.GetVacanciesAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load vacancies: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SearchCompany()
+    {
+        if (string.IsNullOrWhiteSpace(_companySearch))
+            return;
+
+        _searching = true;
+        _errorMessage = null;
+        _report = null;
+
+        try
+        {
+            var search = _companySearch.Trim();
+            _matchedVacancies = _allVacancies
+                .Where(v => v.Company.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(v => v.PostedDate)
+                .ToList();
+
+            _searched = true;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Search failed: {ex.Message}";
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private async Task GenerateReport()
+    {
+        if (_matchedVacancies.Count == 0)
+            return;
+
+        _generatingReport = true;
+        _errorMessage = null;
+
+        try
+        {
+            // Get or create company profile
+            var companyName = _companySearch.Trim();
+            var profile = await CompanyRepo.GetByNameAsync(companyName);
+
+            if (profile is null)
+            {
+                profile = new CompanyProfile { Name = companyName };
+            }
+
+            // Enrich the profile from vacancy data
+            profile = IntelEngine.EnrichFromVacancies(profile, _matchedVacancies);
+
+            // Get interview feedback for this company
+            var feedback = await InterviewRepo.GetByCompanyAsync(companyName);
+
+            // Generate the full intelligence report
+            _report = IntelEngine.GenerateReport(profile, _matchedVacancies, feedback);
+
+            // Persist the enriched profile
+            await CompanyRepo.SaveOrUpdateAsync(profile);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Report generation failed: {ex.Message}";
+        }
+        finally
+        {
+            _generatingReport = false;
+        }
+    }
+
+    private static string FormatSalary(decimal salary) =>
+        salary > 0 ? $"${salary:N0}" : "N/A";
+
+    private static string FormatVacancySalary(JobVacancy v)
+    {
+        if (!v.SalaryMin.HasValue)
+            return "-";
+
+        if (v.SalaryMax.HasValue)
+            return $"${v.SalaryMin.Value:N0} - ${v.SalaryMax.Value:N0}";
+
+        return $"${v.SalaryMin.Value:N0}";
+    }
+}

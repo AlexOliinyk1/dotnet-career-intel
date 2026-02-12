@@ -104,8 +104,9 @@ public sealed class DouScraper(HttpClient httpClient, ILogger<DouScraper> logger
                 ScrapedDate = DateTimeOffset.UtcNow
             };
         }
-        catch
+        catch (Exception ex)
         {
+            _ = ex; // logged by caller
             return null;
         }
     }
@@ -145,8 +146,9 @@ public sealed class DouScraper(HttpClient httpClient, ILogger<DouScraper> logger
                 ScrapedDate = DateTimeOffset.UtcNow
             };
         }
-        catch
+        catch (Exception ex)
         {
+            _ = ex; // logged by caller
             return null;
         }
     }

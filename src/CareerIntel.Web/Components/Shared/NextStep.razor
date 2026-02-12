@@ -1,0 +1,22 @@
+@* Guided next-step action prompt shown after key user actions. *@
+@* Usage: <NextStep Icon="→" Title="Next: Review matches" *@
+@*                  Description="Check your top job matches" Href="/applications/decisions" /> *@
+
+<a href="@Href" class="next-step" style="text-decoration: none; color: inherit;">
+    <span class="next-step-icon" aria-hidden="true">@Icon</span>
+    <div class="next-step-text">
+        <div class="next-step-title">@Title</div>
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <div class="next-step-desc">@Description</div>
+        }
+    </div>
+    <span style="color: var(--text-muted); font-size: 18px;" aria-hidden="true">&#8250;</span>
+</a>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "→";
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Description { get; set; } = "";
+    [Parameter] public string Href { get; set; } = "/";
+}

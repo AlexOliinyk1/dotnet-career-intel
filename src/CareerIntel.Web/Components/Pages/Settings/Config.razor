@@ -1,6 +1,7 @@
 @page "/settings"
 @inject DataDirectoryConfig DataDir
 @inject IEnumerable<CareerIntel.Core.Interfaces.IJobScraper> Scrapers
+@inject CareerIntel.Web.Services.ToastService Toast
 
 <div class="page-header">
     <h1 class="page-title">Settings</h1>
@@ -139,10 +140,6 @@
 
     <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: center;">
         <button class="btn btn-primary" @onclick="SaveConfig">Save Configuration</button>
-        @if (_saveMessage is not null)
-        {
-            <span class="badge badge-@(_saveSuccess ? "green" : "red")">@_saveMessage</span>
-        }
     </div>
 }
 
@@ -175,9 +172,6 @@
     private double _minScoreToNotify = 60;
     private string _notifyHighPaying = "true";
 
-    // Save state
-    private string? _saveMessage;
-    private bool _saveSuccess;
 
     protected override async Task OnInitializedAsync()
     {
@@ -308,20 +302,12 @@
             var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(Path.Combine(DataDir.Path, "notification-config.json"), json);
 
-            _saveSuccess = true;
-            _saveMessage = "Configuration saved";
+            Toast.Success("Configuration saved");
         }
         catch (Exception ex)
         {
-            _saveSuccess = false;
-            _saveMessage = $"Error: {ex.Message}";
+            Toast.Error($"Failed to save: {ex.Message}");
         }
-
-        _ = Task.Delay(3000).ContinueWith(_ =>
-        {
-            _saveMessage = null;
-            InvokeAsync(StateHasChanged);
-        });
     }
 
     private static string ShortenPath(string path)

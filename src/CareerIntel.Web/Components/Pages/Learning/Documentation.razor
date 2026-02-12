@@ -1,0 +1,253 @@
+@page "/learning/docs"
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Documentation</h1>
+    <p class="page-subtitle">Browse and search technical documentation articles for skill development</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading documentation..." />
+
+@if (!_loading)
+{
+    @if (_articles.Count == 0)
+    {
+        <div class="card">
+            <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                No documentation data. Run the CLI <code>docs --scrape</code> command to fetch articles.
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="card-grid" style="margin-bottom: 1.5rem;">
+            <StatCard Label="Total Articles" Value="@_articles.Count.ToString()" />
+            <StatCard Label="Technologies Covered"
+                      Value="@_distinctTechnologies.Count.ToString()"
+                      CssClass="highlight-blue" />
+            <StatCard Label="Avg Read Time"
+                      Value="@(_articles.Count > 0 ? $"{_articles.Average(a => a.EstimatedMinutes):F0} min" : "-")"
+                      CssClass="text-cyan" />
+            <StatCard Label="Sources"
+                      Value="@_articles.Select(a => a.Source).Distinct(StringComparer.OrdinalIgnoreCase).Count().ToString()"
+                      CssClass="text-green" />
+        </div>
+
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <div class="form-row">
+                <div class="form-group" style="flex: 2; min-width: 200px;">
+                    <label>Search</label>
+                    <input type="text" @bind="_searchText" @bind:event="oninput"
+                           placeholder="Search titles, summaries, technologies, tags..." />
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 150px;">
+                    <label>Technology</label>
+                    <select @bind="_selectedTechnology">
+                        <option value="">All Technologies</option>
+                        @foreach (var tech in _distinctTechnologies)
+                        {
+                            <option value="@tech">@tech</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 130px;">
+                    <label>Difficulty</label>
+                    <select @bind="_selectedDifficulty">
+                        <option value="">All Levels</option>
+                        <option value="Easy">Easy</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Hard">Hard</option>
+                        <option value="Expert">Expert</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <span class="text-muted">
+                    Showing @FilteredArticles.Count of @_articles.Count articles
+                    (page @(_currentPage + 1) of @TotalPages)
+                </span>
+            </div>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 30%;">Title</th>
+                        <th>Technology</th>
+                        <th>Difficulty</th>
+                        <th>Est. Time</th>
+                        <th>Topics</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var article in PagedArticles)
+                    {
+                        <tr>
+                            <td class="truncate" style="max-width: 300px;">
+                                <a href="@article.Url" target="_blank" rel="noopener noreferrer"
+                                   style="color: var(--accent);">
+                                    @Truncate(article.Title, 60)
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge badge-blue">@article.Technology</span>
+                            </td>
+                            <td>
+                                <StatusBadge Text="@article.Difficulty.ToString()"
+                                             Color="@GetDifficultyColor(article.Difficulty)" />
+                            </td>
+                            <td class="text-muted">@article.EstimatedMinutes min</td>
+                            <td>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                    @foreach (var topic in article.Topics.Take(3))
+                                    {
+                                        <span class="badge">@topic</span>
+                                    }
+                                    @if (article.Topics.Count > 3)
+                                    {
+                                        <span class="badge badge-gray">+@(article.Topics.Count - 3)</span>
+                                    }
+                                </div>
+                            </td>
+                            <td class="text-muted">@article.Source</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (FilteredArticles.Count == 0)
+            {
+                <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    No articles match the current filters.
+                </p>
+            }
+
+            @if (TotalPages > 1)
+            {
+                <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+                    <button class="btn" disabled="@(_currentPage == 0)" @onclick="PreviousPage">Previous</button>
+                    @for (var i = PaginationStart; i <= PaginationEnd; i++)
+                    {
+                        var pageIndex = i;
+                        <button class="btn @(pageIndex == _currentPage ? "btn-primary" : "")"
+                                @onclick="() => GoToPage(pageIndex)">
+                            @(pageIndex + 1)
+                        </button>
+                    }
+                    <button class="btn" disabled="@(_currentPage >= TotalPages - 1)" @onclick="NextPage">Next</button>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private const int PageSize = 25;
+
+    private bool _loading = true;
+    private List<DocumentationArticle> _articles = [];
+    private List<string> _distinctTechnologies = [];
+    private int _currentPage;
+
+    // Filters
+    private string _searchText = "";
+    private string _selectedTechnology = "";
+    private string _selectedDifficulty = "";
+
+    private List<DocumentationArticle> FilteredArticles
+    {
+        get
+        {
+            var query = _articles.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                var search = _searchText.Trim();
+                query = query.Where(a =>
+                    a.Title.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    a.Summary.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    a.Technology.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    a.Tags.Any(t => t.Contains(search, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (!string.IsNullOrEmpty(_selectedTechnology))
+                query = query.Where(a => a.Technology.Equals(_selectedTechnology, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrEmpty(_selectedDifficulty) && Enum.TryParse<DifficultyLevel>(_selectedDifficulty, out var difficulty))
+                query = query.Where(a => a.Difficulty == difficulty);
+
+            return query.ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredArticles.Count / PageSize));
+
+    private int PaginationStart => Math.Max(0, _currentPage - 3);
+    private int PaginationEnd => Math.Min(TotalPages - 1, _currentPage + 3);
+
+    private List<DocumentationArticle> PagedArticles => FilteredArticles
+        .Skip(_currentPage * PageSize)
+        .Take(PageSize)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadArticles();
+        _loading = false;
+    }
+
+    private async Task LoadArticles()
+    {
+        var path = Path.Combine(DataDir.Path, "documentation.json");
+        if (!File.Exists(path))
+            return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+
+            // documentation.json stores Dictionary<string, DocumentationSet>
+            var sets = JsonSerializer.Deserialize<Dictionary<string, DocumentationSet>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (sets is not null)
+            {
+                _articles = sets.Values
+                    .SelectMany(s => s.Articles)
+                    .OrderBy(a => a.Technology)
+                    .ThenBy(a => a.Title)
+                    .ToList();
+            }
+        }
+        catch
+        {
+            _articles = [];
+        }
+
+        _distinctTechnologies = _articles
+            .Select(a => a.Technology)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t)
+            .ToList();
+    }
+
+    private void GoToPage(int page) => _currentPage = page;
+    private void PreviousPage() { if (_currentPage > 0) _currentPage--; }
+    private void NextPage() { if (_currentPage < TotalPages - 1) _currentPage++; }
+
+    private static string GetDifficultyColor(DifficultyLevel difficulty) => difficulty switch
+    {
+        DifficultyLevel.Easy => "green",
+        DifficultyLevel.Medium => "yellow",
+        DifficultyLevel.Hard => "red",
+        DifficultyLevel.Expert => "purple",
+        _ => "gray"
+    };
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength] + "...";
+}

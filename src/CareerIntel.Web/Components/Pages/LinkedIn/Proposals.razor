@@ -1,38 +1,45 @@
 @page "/linkedin"
 @inject DataDirectoryConfig DataDir
+@inject ProposalRepository ProposalRepo
+@inject CareerIntel.Web.Services.ToastService Toast
 @rendermode InteractiveServer
 
 <div class="page-header">
     <h1 class="page-title">LinkedIn Proposals</h1>
-    <p>Recruiter messages extracted from LinkedIn export</p>
+    <p class="page-subtitle">Recruiter proposals extracted from LinkedIn messages export</p>
 </div>
 
 @* Import Section *@
 <div class="card" style="margin-bottom: 1.5rem;">
-    <h3 class="card-title">Import LinkedIn Messages</h3>
-    <div class="form-group">
-        <label>Upload LinkedIn data export (.zip)</label>
-        <InputFile OnChange="HandleFileUpload" accept=".zip" />
-        @if (!string.IsNullOrEmpty(_importMessage))
-        {
-            <p class="@(_importSuccess ? "text-green" : "text-red")" style="margin-top: 0.5rem;">@_importMessage</p>
-        }
+    <h3 class="card-title">Import LinkedIn Data</h3>
+    <div class="form-row">
+        <div class="form-group" style="flex: 2;">
+            <label>LinkedIn export folder path</label>
+            <input type="text" @bind="_exportPath" placeholder="E:\chrome downloads\Basic_LinkedInDataExport..." />
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+            <button class="btn btn-primary" @onclick="ParseLinkedInExport" disabled="@_parsing">
+                @(_parsing ? "Parsing..." : "Parse Export")
+            </button>
+        </div>
     </div>
+
 </div>
 
 @* Stat Cards *@
 <div class="card-grid" style="margin-bottom: 1.5rem;">
-    <StatCard Label="Total Proposals" Value="@_proposals.Count.ToString()" />
-    <StatCard Label="New" Value="@_proposals.Count(p => p.Status == ProposalStatus.New).ToString()" CssClass="highlight-blue" />
-    <StatCard Label="With Salary Info" Value="@_proposals.Count(p => !string.IsNullOrEmpty(p.SalaryHint)).ToString()" CssClass="highlight-green" />
+    <StatCard Label="Total Proposals" Value="@_totalProposals" />
+    <StatCard Label="Interviewing" Value="@_interviewingCount" CssClass="text-cyan" />
+    <StatCard Label="With Salary" Value="@_withSalaryCount" CssClass="highlight-green" />
+    <StatCard Label="Messages Parsed" Value="@_messageCount" />
 </div>
 
 @* Filter Bar *@
 <div class="card" style="margin-bottom: 1.5rem;">
     <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: end;">
         <div class="form-group" style="flex: 1; min-width: 200px;">
-            <label>Company</label>
-            <input type="text" @bind="_filterCompany" @bind:event="oninput" placeholder="Search company..." />
+            <label>Search</label>
+            <input type="text" @bind="_filterCompany" @bind:event="oninput" placeholder="Company, recruiter, title..." />
         </div>
         <div class="form-group" style="flex: 1; min-width: 160px;">
             <label>Status</label>
@@ -46,10 +53,17 @@
         </div>
         <div class="form-group" style="flex: 1; min-width: 200px;">
             <label>Tech keyword</label>
-            <input type="text" @bind="_filterTech" @bind:event="oninput" placeholder="e.g. .NET, React..." />
+            <input type="text" @bind="_filterTech" @bind:event="oninput" placeholder="e.g. .NET, React, AWS..." />
+        </div>
+        <div class="form-group" style="flex: 1; min-width: 160px;">
+            <label>Salary Data</label>
+            <select @bind="_filterSalary">
+                <option value="">All</option>
+                <option value="with">With Salary Only</option>
+            </select>
         </div>
         <div class="form-group">
-            <button class="btn btn-primary" @onclick="ClearFilters">Clear</button>
+            <button class="btn" @onclick="ClearFilters">Clear</button>
         </div>
     </div>
 </div>
@@ -60,105 +74,270 @@
 @if (!_loading)
 {
     <div class="card">
-        <h3 class="card-title">Proposals (@FilteredProposals.Count())</h3>
-        <div class="data-table" style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Date</th>
-                        <th>Recruiter</th>
-                        <th>Company</th>
-                        <th>Position</th>
-                        <th>Tech Stack</th>
-                        <th>Remote</th>
-                        <th>Status</th>
-                        <th>Update</th>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h3 class="card-title" style="margin: 0;">Proposals (@FilteredProposals.Count)</h3>
+            <span class="text-muted">Page @(_currentPage + 1) of @TotalPages</span>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Recruiter</th>
+                    <th>Company</th>
+                    <th>Position</th>
+                    <th>Salary</th>
+                    <th>Tech Stack</th>
+                    <th>Remote</th>
+                    <th>Msgs</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in PagedProposals)
+                {
+                    <tr @onclick="() => ToggleDetail(p.Id)" style="cursor: pointer;">
+                        <td class="text-muted">@p.ProposalDate.ToString("MMM dd")</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(p.RecruiterProfileUrl))
+                            {
+                                <a href="@p.RecruiterProfileUrl" target="_blank" @onclick:stopPropagation="true">@p.RecruiterName</a>
+                            }
+                            else
+                            {
+                                @p.RecruiterName
+                            }
+                        </td>
+                        <td class="truncate" style="max-width: 140px; font-weight: 500;">@p.Company</td>
+                        <td class="truncate" style="max-width: 180px;">@p.JobTitle</td>
+                        <td class="text-cyan" style="white-space: nowrap;">
+                            @if (!string.IsNullOrEmpty(p.SalaryHint))
+                            {
+                                @TruncateSalary(p.SalaryHint)
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                        </td>
+                        <td class="truncate" style="max-width: 160px;">@p.TechStack</td>
+                        <td>
+                            <StatusBadge Text="@p.RemotePolicy"
+                                         Color="@StatusBadge.GetColorForStatus(p.RemotePolicy)" />
+                        </td>
+                        <td class="text-muted">@p.MessageCount</td>
+                        <td>
+                            <StatusBadge Text="@p.Status.ToString()"
+                                         Color="@StatusBadge.GetColorForStatus(p.Status.ToString())" />
+                        </td>
                     </tr>
-                </thead>
-                <tbody>
-                    @foreach (var p in FilteredProposals)
+                    @if (_expandedId == p.Id)
                     {
                         <tr>
-                            <td>@p.Id</td>
-                            <td>@p.ProposalDate.ToString("yyyy-MM-dd")</td>
-                            <td>
-                                @if (!string.IsNullOrEmpty(p.RecruiterProfileUrl))
-                                {
-                                    <a href="@p.RecruiterProfileUrl" target="_blank">@p.RecruiterName</a>
-                                }
-                                else
-                                {
-                                    @p.RecruiterName
-                                }
-                            </td>
-                            <td class="truncate" style="max-width: 160px;">@p.Company</td>
-                            <td class="truncate" style="max-width: 200px;">@p.JobTitle</td>
-                            <td class="truncate" style="max-width: 180px;">@p.TechStack</td>
-                            <td>
-                                <StatusBadge Text="@p.RemotePolicy"
-                                             Color="@StatusBadge.GetColorForStatus(p.RemotePolicy)" />
-                            </td>
-                            <td>
-                                <StatusBadge Text="@p.Status.ToString()"
-                                             Color="@StatusBadge.GetColorForStatus(p.Status.ToString())" />
-                            </td>
-                            <td>
-                                <select value="@p.Status" @onchange="e => UpdateStatus(p, e)">
-                                    @foreach (var status in Enum.GetValues<ProposalStatus>())
-                                    {
-                                        <option value="@status" selected="@(p.Status == status)">@status</option>
-                                    }
-                                </select>
+                            <td colspan="9" style="padding: 1rem; background: var(--bg-hover);">
+                                <div style="margin-bottom: 0.75rem;">
+                                    <strong>Full Conversation</strong>
+                                    <span class="text-muted" style="margin-left: 1rem;">@p.MessageCount messages | @p.ProposalDate.ToString("yyyy-MM-dd") to @(p.LastMessageDate?.ToString("yyyy-MM-dd") ?? "?")</span>
+                                </div>
+                                <pre style="white-space: pre-wrap; font-size: 12px; max-height: 400px; overflow-y: auto; background: var(--bg-secondary); padding: 0.75rem; border-radius: 4px;">@p.FullContent</pre>
+                                <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; align-items: center;">
+                                    <label style="margin: 0;">Status:</label>
+                                    <select value="@p.Status" @onchange="e => UpdateStatus(p, e)" style="width: auto;">
+                                        @foreach (var status in Enum.GetValues<ProposalStatus>())
+                                        {
+                                            <option value="@status" selected="@(p.Status == status)">@status</option>
+                                        }
+                                    </select>
+                                </div>
                             </td>
                         </tr>
                     }
-                </tbody>
-            </table>
-        </div>
+                }
+            </tbody>
+        </table>
 
-        @if (!FilteredProposals.Any())
+        @if (FilteredProposals.Count == 0)
         {
             <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                No proposals match the current filters.
+                @if (_proposals.Count == 0)
+                {
+                    <text>No proposals loaded. Enter the path to your LinkedIn export folder and click "Parse Export".</text>
+                }
+                else
+                {
+                    <text>No proposals match the current filters.</text>
+                }
             </p>
+        }
+
+        @if (TotalPages > 1)
+        {
+            <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+                <button class="btn" disabled="@(_currentPage == 0)" @onclick="PreviousPage">Previous</button>
+                @for (var i = PaginationStart; i <= PaginationEnd; i++)
+                {
+                    var pageIndex = i;
+                    <button class="btn @(pageIndex == _currentPage ? "btn-primary" : "")"
+                            @onclick="() => GoToPage(pageIndex)">
+                        @(pageIndex + 1)
+                    </button>
+                }
+                <button class="btn" disabled="@(_currentPage >= TotalPages - 1)" @onclick="NextPage">Next</button>
+            </div>
         }
     </div>
 }
 
 @code {
+    private const int PageSize = 20;
     private List<LinkedInProposal> _proposals = [];
     private bool _loading = true;
+    private bool _parsing;
+    private int _currentPage;
+    private int _expandedId = -1;
+
+    // Filters
     private string _filterCompany = "";
     private string _filterStatus = "";
     private string _filterTech = "";
-    private string _importMessage = "";
-    private bool _importSuccess;
+    private string _filterSalary = "";
 
-    private string DataFilePath => Path.Combine(DataDir.Path, "linkedin-proposals.json");
+    // Import
+    private string _exportPath = @"E:\chrome downloads\Basic_LinkedInDataExport_02-11-2026.zip";
 
-    private IEnumerable<LinkedInProposal> FilteredProposals => _proposals
-        .Where(p => string.IsNullOrEmpty(_filterCompany)
-            || p.Company.Contains(_filterCompany, StringComparison.OrdinalIgnoreCase))
-        .Where(p => string.IsNullOrEmpty(_filterStatus)
-            || p.Status.ToString() == _filterStatus)
-        .Where(p => string.IsNullOrEmpty(_filterTech)
-            || p.TechStack.Contains(_filterTech, StringComparison.OrdinalIgnoreCase));
+    // Stat card values
+    private string _totalProposals = "0";
+    private string _interviewingCount = "0";
+    private string _withSalaryCount = "0";
+    private string _messageCount = "0";
+
+    private List<LinkedInProposal> FilteredProposals
+    {
+        get
+        {
+            var query = _proposals.AsEnumerable();
+
+            if (!string.IsNullOrEmpty(_filterCompany))
+            {
+                var search = _filterCompany.Trim();
+                query = query.Where(p =>
+                    p.Company.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    p.RecruiterName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    p.JobTitle.Contains(search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrEmpty(_filterStatus))
+                query = query.Where(p => p.Status.ToString() == _filterStatus);
+
+            if (!string.IsNullOrEmpty(_filterTech))
+                query = query.Where(p => p.TechStack.Contains(_filterTech, StringComparison.OrdinalIgnoreCase));
+
+            if (_filterSalary == "with")
+                query = query.Where(p => !string.IsNullOrEmpty(p.SalaryHint));
+
+            return query.ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredProposals.Count / PageSize));
+    private int PaginationStart => Math.Max(0, _currentPage - 3);
+    private int PaginationEnd => Math.Min(TotalPages - 1, _currentPage + 3);
+    private List<LinkedInProposal> PagedProposals => FilteredProposals
+        .Skip(_currentPage * PageSize).Take(PageSize).ToList();
 
     protected override async Task OnInitializedAsync()
     {
         await LoadProposals();
+        UpdateStats();
         _loading = false;
     }
 
     private async Task LoadProposals()
     {
-        if (!File.Exists(DataFilePath))
-            return;
+        _proposals = await ProposalRepo.GetAllAsync();
+    }
 
-        var json = await File.ReadAllTextAsync(DataFilePath);
-        _proposals = JsonSerializer.Deserialize<List<LinkedInProposal>>(json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+    private void UpdateStats()
+    {
+        _totalProposals = _proposals.Count.ToString();
+        _interviewingCount = _proposals.Count(p => p.Status == ProposalStatus.Interviewing).ToString();
+        _withSalaryCount = _proposals.Count(p => !string.IsNullOrEmpty(p.SalaryHint)).ToString();
+        _messageCount = _proposals.Sum(p => p.MessageCount).ToString("N0");
+    }
+
+    private static bool IsPathSafe(string path)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(path);
+            // Block paths to system directories
+            var blocked = new[] {
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                @"C:\Windows", @"C:\Program Files", @"C:\Program Files (x86)"
+            };
+            foreach (var dir in blocked)
+            {
+                if (!string.IsNullOrEmpty(dir) && fullPath.StartsWith(dir, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            // Block path traversal
+            if (path.Contains(".."))
+                return false;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task ParseLinkedInExport()
+    {
+        if (string.IsNullOrWhiteSpace(_exportPath))
+        {
+            Toast.Warning("Please enter the path to your LinkedIn export folder.");
+            return;
+        }
+
+        if (!IsPathSafe(_exportPath))
+        {
+            Toast.Error("Invalid path. Path cannot target system directories or contain traversal sequences.");
+            return;
+        }
+
+        _parsing = true;
+        Toast.Info("Parsing LinkedIn messages...");
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var resolvedPath = Path.GetFullPath(_exportPath);
+            var messagesPath = Path.Combine(resolvedPath, "messages.csv");
+            if (!File.Exists(messagesPath))
+            {
+                Toast.Error($"messages.csv not found at: {messagesPath}");
+                _parsing = false;
+                return;
+            }
+
+            var parser = new LinkedInDataParser(DataDir.Path);
+            var proposals = await parser.ParseProposalsAsync(messagesPath);
+
+            await ProposalRepo.SaveAllAsync(proposals);
+            _proposals = await ProposalRepo.GetAllAsync();
+            UpdateStats();
+
+            Toast.Success($"Successfully parsed {proposals.Count} proposals from LinkedIn messages.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Parse failed: {ex.Message}");
+        }
+        finally
+        {
+            _parsing = false;
+        }
     }
 
     private async Task UpdateStatus(LinkedInProposal proposal, ChangeEventArgs e)
@@ -166,44 +345,15 @@
         if (Enum.TryParse<ProposalStatus>(e.Value?.ToString(), out var newStatus))
         {
             proposal.Status = newStatus;
-            await SaveProposals();
+            await ProposalRepo.UpdateStatusAsync(proposal.Id, newStatus);
+            UpdateStats();
+            Toast.Success($"Status updated to {newStatus}");
         }
     }
 
-    private async Task SaveProposals()
+    private void ToggleDetail(int id)
     {
-        var json = JsonSerializer.Serialize(_proposals, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(DataFilePath, json);
-    }
-
-    private async Task HandleFileUpload(InputFileChangeEventArgs e)
-    {
-        try
-        {
-            _importMessage = "Uploading... (ZIP import parsing not yet implemented)";
-            _importSuccess = false;
-
-            var file = e.File;
-            if (file == null || !file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                _importMessage = "Please select a .zip file exported from LinkedIn.";
-                return;
-            }
-
-            // Save uploaded file to temp location
-            var tempPath = Path.Combine(Path.GetTempPath(), $"linkedin-export-{Guid.NewGuid()}.zip");
-            await using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
-            await using var fs = File.Create(tempPath);
-            await stream.CopyToAsync(fs);
-
-            _importMessage = $"File '{file.Name}' uploaded ({file.Size / 1024} KB). ZIP parsing will extract messages and merge with existing proposals.";
-            _importSuccess = true;
-        }
-        catch (Exception ex)
-        {
-            _importMessage = $"Upload failed: {ex.Message}";
-            _importSuccess = false;
-        }
+        _expandedId = _expandedId == id ? -1 : id;
     }
 
     private void ClearFilters()
@@ -211,5 +361,17 @@
         _filterCompany = "";
         _filterStatus = "";
         _filterTech = "";
+        _filterSalary = "";
+        _currentPage = 0;
+    }
+
+    private void GoToPage(int page) => _currentPage = page;
+    private void PreviousPage() { if (_currentPage > 0) _currentPage--; }
+    private void NextPage() { if (_currentPage < TotalPages - 1) _currentPage++; }
+
+    private static string TruncateSalary(string salary)
+    {
+        if (salary.Length <= 35) return salary;
+        return salary[..35] + "...";
     }
 }

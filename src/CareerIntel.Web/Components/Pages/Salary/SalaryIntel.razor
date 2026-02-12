@@ -1,13 +1,29 @@
 @page "/salary"
+@using CareerIntel.Matching
 @inject VacancyRepository VacancyRepo
 @inject DataDirectoryConfig DataDir
+@inject SalaryIntelligenceEngine SalaryEngine
 
 <div class="page-header">
-    <h1 class="page-title">Salary Intelligence</h1>
-    <p class="page-subtitle">Market salary analysis from scraped job vacancy data</p>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h1 class="page-title">Salary Intelligence</h1>
+            <p class="page-subtitle">Market salary analysis from scraped job vacancy data</p>
+        </div>
+        <ExportButton Label="Export CSV" FileName="@($"salary-data-{DateTime.Now:yyyy-MM-dd}.csv")"
+                      GetCsvContent="@(() => CsvExportService.ExportSalaryData(_salaryVacancies))" />
+    </div>
 </div>
 
 <LoadingSpinner Loading="@_loading" Message="Analyzing salary data..." />
+
+@if (!string.IsNullOrEmpty(_engineError))
+{
+    <div class="card" style="border-left: 3px solid var(--color-red, #e74c3c); margin-bottom: 1rem;">
+        <p style="color: var(--color-red, #e74c3c);"><strong>Engine Error:</strong> @_engineError</p>
+        <p class="text-muted">Falling back to basic statistics.</p>
+    </div>
+}
 
 @if (!_loading)
 {
@@ -31,6 +47,70 @@
             <StatCard Label="Maximum" Value="@FormatSalary(_maxSalary)"
                       Sub="highest reported" CssClass="text-yellow" />
         </div>
+
+        @* Engine-powered report summary *@
+        @if (_salaryReport is not null)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h3 class="card-title">Market Summary</h3>
+                <p style="line-height: 1.6;">@_salaryReport.MarketSummary</p>
+                <div class="card-grid" style="margin-top: 1rem;">
+                    <StatCard Label="Median Range (USD)" Value="@($"${_salaryReport.MedianSalaryMin:N0} - ${_salaryReport.MedianSalaryMax:N0}")"
+                              Sub="normalized to USD" CssClass="text-cyan" />
+                    <StatCard Label="Primary Currency" Value="@_salaryReport.PrimaryCurrency"
+                              Sub="most common currency" />
+                    <StatCard Label="With Salary Data" Value="@($"{_salaryReport.TotalVacanciesWithSalary} / {_salaryReport.TotalVacanciesAnalyzed}")"
+                              Sub="vacancies with salary info" />
+                    @if (_salaryReport.UserPositionPercentile.HasValue)
+                    {
+                        <StatCard Label="Your Percentile" Value="@($"{_salaryReport.UserPositionPercentile.Value:F0}%")"
+                                  Sub="your position in the market" CssClass="text-green" />
+                    }
+                </div>
+            </div>
+
+            @* Market Value Estimate *@
+            @if (_marketValue is not null && _marketValue.Confidence > 0)
+            {
+                <div class="card" style="margin-top: 1.5rem;">
+                    <h3 class="card-title">Your Estimated Market Value</h3>
+                    <div class="card-grid">
+                        <StatCard Label="Estimated Range" Value="@($"${_marketValue.EstimatedMinSalary:N0} - ${_marketValue.EstimatedMaxSalary:N0}")"
+                                  Sub="USD" CssClass="text-green" />
+                        <StatCard Label="Confidence" Value="@($"{_marketValue.Confidence:F0}%")"
+                                  Sub="based on data quality" CssClass="@(_marketValue.Confidence >= 50 ? "text-green" : "text-yellow")" />
+                        <StatCard Label="Market Percentile" Value="@($"{_marketValue.Percentile:F0}%")"
+                                  Sub="your position" CssClass="text-cyan" />
+                    </div>
+                    <p style="margin-top: 1rem; line-height: 1.6;">@_marketValue.Reasoning</p>
+
+                    @if (_marketValue.PremiumSkills.Count > 0)
+                    {
+                        <div style="margin-top: 1rem;">
+                            <strong>Your Premium Skills</strong> (command above-average salaries):
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem;">
+                                @foreach (var skill in _marketValue.PremiumSkills)
+                                {
+                                    <span class="badge" style="background: var(--color-green, #2ecc71); color: #000;">@skill</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (_marketValue.ValueBoostSkills.Count > 0)
+                    {
+                        <div style="margin-top: 1rem;">
+                            <strong>Skills to Learn for Higher Pay</strong>:
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem;">
+                                @foreach (var skill in _marketValue.ValueBoostSkills)
+                                {
+                                    <span class="badge" style="background: var(--color-yellow, #f1c40f); color: #000;">@skill</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
 
         <div class="card-grid" style="margin-top: 1.5rem;">
             <div class="card">
@@ -58,36 +138,251 @@
             </div>
         </div>
 
+        @* Engine-powered seniority bands *@
+        @if (_salaryReport is not null && _salaryReport.BySeniority.Count > 0)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h3 class="card-title">Salary Bands by Seniority (Normalized to USD)</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Seniority</th>
+                            <th>Count</th>
+                            <th>Median Salary</th>
+                            <th>Min</th>
+                            <th>Max</th>
+                            <th>Range</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{ var maxBandMedian = _salaryReport.BySeniority.Max(b => b.MedianSalary); }
+                        @foreach (var band in _salaryReport.BySeniority)
+                        {
+                            <tr>
+                                <td>
+                                    <StatusBadge Text="@band.Level"
+                                                 Color="@GetSeniorityColorByName(band.Level)" />
+                                </td>
+                                <td>@band.VacancyCount</td>
+                                <td><strong>$@band.MedianSalary.ToString("N0")</strong></td>
+                                <td class="text-muted">$@band.MinSalary.ToString("N0")</td>
+                                <td class="text-muted">$@band.MaxSalary.ToString("N0")</td>
+                                <td>
+                                    <div class="bar-chart" style="min-width: 120px;">
+                                        <div class="bar-track">
+                                            <div class="bar-fill" style="width: @(maxBandMedian > 0 ? (int)(band.MedianSalary / maxBandMedian * 100) : 0)%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h3 class="card-title">Salary Distribution by Seniority</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Seniority</th>
+                            <th>Count</th>
+                            <th>Avg Salary</th>
+                            <th>Min</th>
+                            <th>Max</th>
+                            <th>Range</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var group in _seniorityBreakdown)
+                        {
+                            <tr>
+                                <td>
+                                    <StatusBadge Text="@group.Level.ToString()"
+                                                 Color="@GetSeniorityColor(group.Level)" />
+                                </td>
+                                <td>@group.Count</td>
+                                <td><strong>@FormatSalary(group.AvgSalary)</strong></td>
+                                <td class="text-muted">@FormatSalary(group.MinSalary)</td>
+                                <td class="text-muted">@FormatSalary(group.MaxSalary)</td>
+                                <td>
+                                    <div class="bar-chart" style="min-width: 120px;">
+                                        <div class="bar-track">
+                                            <div class="bar-fill" style="width: @(group.BarWidth)%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @* Engine-powered skill salary analysis *@
+        @if (_salaryReport is not null && _salaryReport.BySkill.Count > 0)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h3 class="card-title">Salary by Skill (Top 20)</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Skill</th>
+                            <th>Vacancies</th>
+                            <th>Avg Min (USD)</th>
+                            <th>Avg Max (USD)</th>
+                            <th>Median (USD)</th>
+                            <th>Premium</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var skill in _salaryReport.BySkill.Take(20))
+                        {
+                            <tr>
+                                <td><strong>@skill.Skill</strong></td>
+                                <td>@skill.VacancyCount</td>
+                                <td>$@skill.AverageSalaryMin.ToString("N0")</td>
+                                <td>$@skill.AverageSalaryMax.ToString("N0")</td>
+                                <td><strong>$@skill.MedianSalary.ToString("N0")</strong></td>
+                                <td class="@(skill.SalaryPremiumPercent > 0 ? "text-green" : skill.SalaryPremiumPercent < -5 ? "text-red" : "")">
+                                    @(skill.SalaryPremiumPercent > 0 ? "+" : "")@skill.SalaryPremiumPercent.ToString("F1")%
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @* Engine-powered platform salary analysis *@
+        @if (_salaryReport is not null && _salaryReport.ByPlatform.Count > 0)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h3 class="card-title">Salary by Platform (USD)</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Platform</th>
+                            <th>Vacancies</th>
+                            <th>Avg Min</th>
+                            <th>Avg Max</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var platform in _salaryReport.ByPlatform)
+                        {
+                            <tr>
+                                <td><span class="badge">@platform.Platform</span></td>
+                                <td>@platform.VacancyCount</td>
+                                <td>$@platform.AverageSalaryMin.ToString("N0")</td>
+                                <td><strong>$@platform.AverageSalaryMax.ToString("N0")</strong></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @* Engine-powered high-value skill combinations *@
+        @if (_highValueCombos is not null && _highValueCombos.Count > 0)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h3 class="card-title">High-Value Skill Combinations</h3>
+                <p class="text-muted" style="margin-bottom: 1rem;">Skill combinations that appear together in the highest-paying vacancies.</p>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Skills</th>
+                            <th>Vacancies</th>
+                            <th>Avg Salary (USD)</th>
+                            <th>Premium vs Baseline</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var combo in _highValueCombos)
+                        {
+                            <tr>
+                                <td>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+                                        @foreach (var skill in combo.Skills)
+                                        {
+                                            <span class="badge">@skill</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>@combo.VacancyCount</td>
+                                <td><strong>$@combo.AverageSalary.ToString("N0")</strong></td>
+                                <td class="@(combo.PremiumOverBaseline > 0 ? "text-green" : "text-red")">
+                                    @(combo.PremiumOverBaseline > 0 ? "+" : "")@combo.PremiumOverBaseline.ToString("F1")%
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @* Engine-powered company salary analysis *@
+        @if (_salaryReport is not null && _salaryReport.ByCompany.Count > 0)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h3 class="card-title">Salary by Company (Top 20, USD)</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th>Vacancies</th>
+                            <th>Avg Min</th>
+                            <th>Avg Max</th>
+                            <th>Top Skills</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var company in _salaryReport.ByCompany.Take(20))
+                        {
+                            <tr>
+                                <td><strong>@company.Company</strong></td>
+                                <td>@company.VacancyCount</td>
+                                <td>$@company.AverageSalaryMin.ToString("N0")</td>
+                                <td><strong>$@company.AverageSalaryMax.ToString("N0")</strong></td>
+                                <td class="text-muted">@company.TopSkillsRequired</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
         <div class="card" style="margin-top: 1.5rem;">
-            <h3 class="card-title">Salary Distribution by Seniority</h3>
+            <h3 class="card-title">Salary Tier Distribution</h3>
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Seniority</th>
-                        <th>Count</th>
-                        <th>Avg Salary</th>
-                        <th>Min</th>
-                        <th>Max</th>
+                        <th>Tier</th>
                         <th>Range</th>
+                        <th>Count</th>
+                        <th>% of Total</th>
+                        <th>Distribution</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var group in _seniorityBreakdown)
+                    @foreach (var tier in _salaryTiers)
                     {
                         <tr>
                             <td>
-                                <StatusBadge Text="@group.Level.ToString()"
-                                             Color="@GetSeniorityColor(group.Level)" />
+                                <StatusBadge Text="@tier.Name" Color="@tier.Color" />
                             </td>
-                            <td>@group.Count</td>
-                            <td><strong>@FormatSalary(group.AvgSalary)</strong></td>
-                            <td class="text-muted">@FormatSalary(group.MinSalary)</td>
-                            <td class="text-muted">@FormatSalary(group.MaxSalary)</td>
+                            <td>@tier.Range</td>
+                            <td><strong>@tier.Count</strong></td>
+                            <td>@($"{tier.Percent:F1}%")</td>
                             <td>
-                                <div class="bar-chart" style="min-width: 120px;">
-                                    <div class="bar-track">
-                                        <div class="bar-fill" style="width: @(group.BarWidth)%"></div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <div style="width: 120px; height: 8px; background: var(--bg-hover); border-radius: 4px; overflow: hidden;">
+                                        <div style="width: @(tier.BarWidth)%; height: 100%; background: var(--color-@(tier.Color), var(--accent)); border-radius: 4px;"></div>
                                     </div>
+                                    <span class="text-muted">@tier.Count</span>
                                 </div>
                             </td>
                         </tr>
@@ -95,6 +390,39 @@
                 </tbody>
             </table>
         </div>
+
+        @if (_topPayingVacancies.Count > 0)
+        {
+            <div class="card" style="margin-top: 1.5rem;">
+                <h3 class="card-title">Top 15 Highest-Paying Positions</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th>Title</th>
+                            <th>Salary Range</th>
+                            <th>Remote</th>
+                            <th>Platform</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in _topPayingVacancies)
+                        {
+                            <tr>
+                                <td><strong>@v.Company</strong></td>
+                                <td><a href="/jobs/@v.Id" class="truncate">@v.Title</a></td>
+                                <td class="text-green"><strong>@FormatSalaryRange(v)</strong></td>
+                                <td>
+                                    <StatusBadge Text="@v.RemotePolicy.ToString()"
+                                                 Color="@StatusBadge.GetColorForStatus(v.RemotePolicy.ToString())" />
+                                </td>
+                                <td><span class="badge">@v.SourcePlatform</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
 
         <div class="card" style="margin-top: 1.5rem;">
             <h2 class="card-title">Vacancies with Salary Data</h2>
@@ -146,6 +474,7 @@
 
 @code {
     private bool _loading = true;
+    private string? _engineError;
     private List<JobVacancy> _salaryVacancies = [];
     private decimal _avgSalary;
     private decimal _medianSalary;
@@ -154,6 +483,13 @@
     private Dictionary<string, int> _salaryBySeniority = [];
     private Dictionary<string, int> _salaryByRemote = [];
     private List<SeniorityGroup> _seniorityBreakdown = [];
+    private List<SalaryTier> _salaryTiers = [];
+    private List<JobVacancy> _topPayingVacancies = [];
+
+    // Engine-powered data
+    private SalaryReport? _salaryReport;
+    private MarketValueEstimate? _marketValue;
+    private List<SkillCombinationValue>? _highValueCombos;
 
     protected override async Task OnInitializedAsync()
     {
@@ -191,7 +527,7 @@
                     g => g.Key.ToString(),
                     g => (int)g.Average(v => GetMidpoint(v)));
 
-            // Seniority breakdown table
+            // Seniority breakdown table (fallback)
             var maxAvg = 1m;
             var groups = _salaryVacancies
                 .GroupBy(v => v.SeniorityLevel)
@@ -217,9 +553,81 @@
                 g.BarWidth = maxAvg > 0 ? (int)(g.AvgSalary / maxAvg * 100) : 0;
 
             _seniorityBreakdown = groups;
+
+            // Salary tiers
+            var tierDefs = new (string Name, decimal Min, decimal Max, string Color)[]
+            {
+                ("Entry", 0, 50_000, "gray"),
+                ("Mid", 50_000, 80_000, "blue"),
+                ("Senior", 80_000, 120_000, "cyan"),
+                ("Staff", 120_000, 150_000, "green"),
+                ("Principal", 150_000, 200_000, "yellow"),
+                ("Director", 200_000, 300_000, "orange"),
+                ("Executive", 300_000, decimal.MaxValue, "red"),
+            };
+
+            var maxTierCount = 1;
+            _salaryTiers = tierDefs.Select(t =>
+            {
+                var count = _salaryVacancies.Count(v =>
+                {
+                    var mid = GetMidpoint(v);
+                    return mid >= t.Min && mid < t.Max;
+                });
+                if (count > maxTierCount) maxTierCount = count;
+                return new SalaryTier
+                {
+                    Name = t.Name,
+                    Range = t.Max == decimal.MaxValue ? $"${t.Min / 1000:F0}K+" : $"${t.Min / 1000:F0}K-${t.Max / 1000:F0}K",
+                    Color = t.Color,
+                    Count = count,
+                    Percent = _salaryVacancies.Count > 0 ? count * 100.0 / _salaryVacancies.Count : 0
+                };
+            }).ToList();
+
+            foreach (var tier in _salaryTiers)
+                tier.BarWidth = maxTierCount > 0 ? (int)(tier.Count * 100.0 / maxTierCount) : 0;
+
+            // Top paying vacancies
+            _topPayingVacancies = _salaryVacancies
+                .OrderByDescending(v => v.SalaryMax ?? v.SalaryMin!.Value)
+                .Take(15)
+                .ToList();
+
+            // Run engine-powered analysis
+            try
+            {
+                var profile = await LoadProfile();
+                _salaryReport = SalaryEngine.GenerateReport(allVacancies, profile);
+                _highValueCombos = SalaryEngine.FindHighValueCombinations(allVacancies, 10);
+
+                if (profile.Skills.Count > 0)
+                {
+                    _marketValue = SalaryEngine.EstimateMarketValue(allVacancies, profile);
+                }
+            }
+            catch (Exception ex)
+            {
+                _engineError = ex.Message;
+            }
         }
 
         _loading = false;
+    }
+
+    private async Task<UserProfile> LoadProfile()
+    {
+        var profilePath = Path.Combine(DataDir.Path, "my-profile.json");
+
+        if (File.Exists(profilePath))
+        {
+            var json = await File.ReadAllTextAsync(profilePath);
+            return System.Text.Json.JsonSerializer.Deserialize<UserProfile>(json,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? new UserProfile();
+        }
+
+        return new UserProfile();
     }
 
     private static decimal GetMidpoint(JobVacancy v) =>
@@ -251,6 +659,18 @@
         _ => "gray"
     };
 
+    private static string GetSeniorityColorByName(string level) => level switch
+    {
+        "Intern" => "gray",
+        "Junior" => "green",
+        "Middle" => "cyan",
+        "Senior" => "blue",
+        "Lead" => "yellow",
+        "Architect" => "orange",
+        "Principal" => "red",
+        _ => "gray"
+    };
+
     private sealed class SeniorityGroup
     {
         public SeniorityLevel Level { get; set; }
@@ -258,6 +678,16 @@
         public decimal AvgSalary { get; set; }
         public decimal MinSalary { get; set; }
         public decimal MaxSalary { get; set; }
+        public int BarWidth { get; set; }
+    }
+
+    private sealed class SalaryTier
+    {
+        public string Name { get; set; } = "";
+        public string Range { get; set; } = "";
+        public string Color { get; set; } = "gray";
+        public int Count { get; set; }
+        public double Percent { get; set; }
         public int BarWidth { get; set; }
     }
 }

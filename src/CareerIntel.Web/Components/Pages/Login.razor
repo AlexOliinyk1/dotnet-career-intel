@@ -1,0 +1,63 @@
+@page "/login"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+
+<div class="login-wrapper">
+    <div class="login-card">
+        <div class="login-brand">
+            <span class="brand-icon" aria-hidden="true">CI</span>
+            <span class="brand-text">CareerIntel</span>
+        </div>
+        <p class="login-subtitle">Enter your password to continue</p>
+
+        @if (_showError)
+        {
+            <div class="login-error" role="alert">
+                @_errorMessage
+            </div>
+        }
+
+        <form method="post" action="/api/auth/login" @formname="login-form">
+            <AntiforgeryToken />
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input id="password"
+                       type="password"
+                       name="password"
+                       value="@_password"
+                       @oninput="e => _password = e.Value?.ToString() ?? string.Empty"
+                       placeholder="Enter password"
+                       autocomplete="current-password"
+                       required
+                       style="width: 100%;" />
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
+                Sign In
+            </button>
+        </form>
+
+        <p class="login-footer">Single-user admin dashboard</p>
+    </div>
+</div>
+
+@code {
+    private string _password = string.Empty;
+    private bool _showError;
+
+    private string _errorMessage = "";
+
+    protected override void OnInitialized()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var error = query["error"];
+        _showError = !string.IsNullOrEmpty(error);
+        _errorMessage = error switch
+        {
+            "rate" => "Too many login attempts. Please wait 5 minutes.",
+            "1" => "Invalid password. Please try again.",
+            _ => ""
+        };
+    }
+}

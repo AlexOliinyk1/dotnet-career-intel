@@ -1,4 +1,10 @@
 @page "/interview/prep"
+@using CareerIntel.Matching
+@inject InterviewPrepEngine PrepEngine
+@inject InterviewLearningPlanner LearningPlanner
+@inject VacancyRepository VacancyRepo
+@inject InterviewRepository InterviewRepo
+@inject DataDirectoryConfig DataDir
 
 <div class="page-header">
     <h1 class="page-title">Interview Prep</h1>
@@ -8,12 +14,14 @@
 <div class="card" style="margin-bottom: 1rem;">
     <div class="form-row">
         <div class="form-group">
-            <label>Company Name</label>
-            <input type="text" @bind="_companyName" placeholder="e.g. Microsoft" />
-        </div>
-        <div class="form-group">
-            <label>Role</label>
-            <input type="text" @bind="_role" placeholder="e.g. Senior .NET Developer" />
+            <label>Select Vacancy</label>
+            <select @bind="_selectedVacancyId">
+                <option value="">-- Pick a vacancy --</option>
+                @foreach (var v in _vacancies)
+                {
+                    <option value="@v.Id">@v.Title - @v.Company (@v.SeniorityLevel)</option>
+                }
+            </select>
         </div>
         <div class="form-group">
             <label>Round Type</label>
@@ -25,148 +33,564 @@
             </select>
         </div>
         <div class="form-group" style="align-self: flex-end;">
-            <button class="btn btn-primary" @onclick="GeneratePlan">Generate Plan</button>
+            <button class="btn btn-primary" @onclick="GeneratePlan" disabled="@(_generating || string.IsNullOrEmpty(_selectedVacancyId))">
+                @(_generating ? "Generating..." : "Generate Plan")
+            </button>
         </div>
     </div>
 </div>
 
-@if (_planGenerated)
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-red);">
+        <p style="color: var(--color-red); margin: 0;">@_error</p>
+    </div>
+}
+
+@if (_prepPlan is not null)
 {
     <div class="card-grid" style="margin-bottom: 1rem;">
-        <StatCard Label="Total Topics" Value="@_filteredTopics.Count.ToString()" />
-        <StatCard Label="Total Questions" Value="@_filteredTopics.Sum(t => t.Questions.Count).ToString()" />
-        <StatCard Label="Key Concepts" Value="@_filteredTopics.Sum(t => t.KeyConcepts.Count).ToString()" />
-        <StatCard Label="Resources" Value="@_filteredTopics.Sum(t => t.Resources.Count).ToString()" />
+        <StatCard Label="Skill Areas" Value="@_prepPlan.SkillSets.Count.ToString()" />
+        <StatCard Label="Total Questions" Value="@((_prepPlan.SkillSets.Sum(s => s.Questions.Count) + _prepPlan.BehavioralQuestions.Count + _prepPlan.SystemDesignQuestions.Count).ToString())" />
+        <StatCard Label="Est. Prep Hours" Value="@($"{_prepPlan.EstimatedPrepHours}h")" />
+        <StatCard Label="Red Flags" Value="@_prepPlan.RedFlags.Count.ToString()"
+                  CssClass="@(_prepPlan.RedFlags.Count > 0 ? "stat-danger" : "")" />
     </div>
-}
 
-@foreach (var topic in _filteredTopics)
-{
-    <div class="card" style="margin-bottom: 1rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 class="section-title" style="margin-bottom: 0;">@topic.Name</h2>
-            <span class="badge">@topic.Questions.Count questions</span>
+    @* Overall Strategy *@
+    @if (!string.IsNullOrEmpty(_prepPlan.OverallStrategy))
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <h2 class="section-title">Overall Strategy</h2>
+            <p style="line-height: 1.6;">@_prepPlan.OverallStrategy</p>
         </div>
-        <p class="text-muted" style="margin-top: 0.25rem;">@topic.Description</p>
+    }
 
-        @if (topic.KeyConcepts.Count > 0)
-        {
-            <div style="margin-bottom: 0.75rem;">
-                <strong>Key Concepts:</strong>
-                @foreach (var concept in topic.KeyConcepts)
-                {
-                    <span class="badge" style="margin: 0.125rem;">@concept</span>
-                }
+    @* Learning Plan Section *@
+    @if (_learningPlan is not null)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 class="section-title" style="margin-bottom: 0;">Learning Recommendations</h2>
+                <StatusBadge Text="@($"Pass Probability: {_learningPlan.EstimatedPassProbability:F0}%")"
+                             Color="@(_learningPlan.EstimatedPassProbability >= 60 ? "green" : _learningPlan.EstimatedPassProbability >= 35 ? "yellow" : "red")" />
             </div>
-        }
+            <p class="text-muted" style="margin-top: 0.5rem;">@_learningPlan.Verdict</p>
 
-        @if (_expandedTopics.Contains(topic.Id))
-        {
-            <table class="data-table" style="margin-bottom: 0.75rem;">
-                <thead>
-                    <tr>
-                        <th>Question</th>
-                        <th>Difficulty</th>
-                        <th>Tags</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var q in topic.Questions)
-                    {
-                        <tr @onclick="() => ToggleAnswer(topic.Id + q.Question)"
-                            style="cursor: pointer;">
-                            <td>
-                                @q.Question
-                                @if (_expandedAnswers.Contains(topic.Id + q.Question))
-                                {
-                                    <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-surface); border-radius: 4px;">
-                                        <strong>Expected Answer:</strong>
-                                        <p style="margin: 0.25rem 0 0 0; white-space: pre-wrap;">@q.ExpectedAnswer</p>
-                                    </div>
-                                }
-                            </td>
-                            <td>
-                                <StatusBadge Text="@q.Difficulty"
-                                             Color="@GetDifficultyColor(q.Difficulty)" />
-                            </td>
-                            <td class="truncate" style="max-width: 180px;">
-                                @string.Join(", ", q.Tags)
-                            </td>
+            <div class="card-grid" style="margin: 0.75rem 0;">
+                <StatCard Label="Study Hours" Value="@($"{_learningPlan.TotalEstimatedHours}h")" />
+                <StatCard Label="Critical Gaps" Value="@_learningPlan.CriticalGapCount.ToString()"
+                          CssClass="@(_learningPlan.CriticalGapCount > 0 ? "stat-danger" : "stat-success")" />
+                <StatCard Label="Skipped (Low ROI)" Value="@_learningPlan.SkippedLowROICount.ToString()" />
+            </div>
+
+            @if (_learningPlan.Items.Count > 0)
+            {
+                <table class="data-table" style="margin-top: 0.5rem;">
+                    <thead>
+                        <tr>
+                            <th>Skill</th>
+                            <th>Effort</th>
+                            <th>Hours</th>
+                            <th>Impact</th>
+                            <th>Focus Area</th>
+                            <th>Status</th>
                         </tr>
-                    }
-                </tbody>
-            </table>
-        }
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _learningPlan.Items)
+                        {
+                            <tr style="@(item.SkipRecommended ? "opacity: 0.5;" : "")"
+                                @onclick="() => ToggleLearningItem(item.SkillName)" class="@(item.SkipRecommended ? "" : "cursor-pointer")">
+                                <td><strong>@item.SkillName</strong></td>
+                                <td>
+                                    <StatusBadge Text="@item.Effort.ToString()"
+                                                 Color="@(item.Effort == LearningEffort.Fast ? "green" : item.Effort == LearningEffort.Medium ? "yellow" : "red")" />
+                                </td>
+                                <td>@item.EstimatedHours h</td>
+                                <td>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <div style="width: 60px; height: 6px; background: var(--border-color); border-radius: 3px;">
+                                            <div style="width: @($"{item.InterviewImpactScore:F0}%"); height: 100%;
+                                                        background: @(item.InterviewImpactScore >= 60 ? "var(--color-red)" : item.InterviewImpactScore >= 30 ? "var(--color-yellow)" : "var(--color-green)");
+                                                        border-radius: 3px;"></div>
+                                        </div>
+                                        <span>@($"{item.InterviewImpactScore:F0}%")</span>
+                                    </div>
+                                </td>
+                                <td class="text-muted truncate" style="max-width: 200px;">@item.FocusArea</td>
+                                <td>
+                                    @if (item.SkipRecommended)
+                                    {
+                                        <StatusBadge Text="Skip" Color="gray" />
+                                    }
+                                    else
+                                    {
+                                        <StatusBadge Text="Study" Color="cyan" />
+                                    }
+                                </td>
+                            </tr>
 
-        @if (topic.Resources.Count > 0 && _expandedTopics.Contains(topic.Id))
-        {
-            <div style="margin-bottom: 0.5rem;">
-                <strong>Resources:</strong>
-                <ul style="margin: 0.25rem 0; padding-left: 1.25rem;">
-                    @foreach (var r in topic.Resources)
-                    {
-                        <li>
-                            <a href="@r.Url" target="_blank" rel="noopener">@r.Title</a>
-                            <span class="badge" style="margin-left: 0.25rem;">@r.Type</span>
-                        </li>
-                    }
-                </ul>
+                            @if (_expandedLearningItems.Contains(item.SkillName))
+                            {
+                                <tr>
+                                    <td colspan="6" style="padding: 0.75rem; background: var(--bg-surface);">
+                                        @if (item.SkipRecommended)
+                                        {
+                                            <p class="text-muted" style="margin: 0 0 0.5rem 0;"><strong>Skip Reason:</strong> @item.SkipReason</p>
+                                        }
+                                        <strong>Prep Actions:</strong>
+                                        <ul style="margin: 0.25rem 0 0 0; padding-left: 1.25rem;">
+                                            @foreach (var action in item.PrepActions)
+                                            {
+                                                <li style="margin-bottom: 0.25rem;">@action</li>
+                                            }
+                                        </ul>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+
+    @* Red Flags *@
+    @if (_prepPlan.RedFlags.Count > 0)
+    {
+        <div class="card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-red);">
+            <h2 class="section-title">Red Flags / Watch Out</h2>
+            <ul style="margin: 0.25rem 0; padding-left: 1.25rem;">
+                @foreach (var flag in _prepPlan.RedFlags)
+                {
+                    <li style="margin-bottom: 0.25rem; color: var(--color-red);">@flag</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @* Skill-Based Questions *@
+    @foreach (var skillSet in GetFilteredSkillSets())
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 class="section-title" style="margin-bottom: 0;">@skillSet.SkillName</h2>
+                    <small class="text-muted">@skillSet.DepthLabel</small>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <StatusBadge Text="@(skillSet.IsRequired ? "Required" : "Preferred")"
+                                 Color="@(skillSet.IsRequired ? "cyan" : "gray")" />
+                    <span class="badge">@skillSet.Questions.Count questions</span>
+                    <span class="badge">Depth @skillSet.ExpectedDepth/5</span>
+                </div>
             </div>
-        }
 
-        <button class="btn" @onclick="() => ToggleTopic(topic.Id)">
-            @(_expandedTopics.Contains(topic.Id) ? "Collapse" : "Expand Questions")
-        </button>
-    </div>
+            @if (skillSet.RedFlags.Count > 0)
+            {
+                <div style="margin-top: 0.5rem;">
+                    <strong style="color: var(--color-red);">Red Flags:</strong>
+                    @foreach (var flag in skillSet.RedFlags)
+                    {
+                        <span class="badge" style="margin: 0.125rem; background: rgba(255,100,100,0.15); color: var(--color-red);">@flag</span>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(skillSet.StrongAnswerSummary))
+            {
+                <p class="text-muted" style="margin-top: 0.25rem; font-style: italic;">@skillSet.StrongAnswerSummary</p>
+            }
+
+            @if (_expandedTopics.Contains(skillSet.SkillName))
+            {
+                <table class="data-table" style="margin-top: 0.75rem; margin-bottom: 0.75rem;">
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Type</th>
+                            <th>Difficulty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in skillSet.Questions)
+                        {
+                            <tr @onclick="() => ToggleAnswer(skillSet.SkillName + q.Question)"
+                                style="cursor: pointer;">
+                                <td style="max-width: 400px;">
+                                    @q.Question
+                                    @if (_expandedAnswers.Contains(skillSet.SkillName + q.Question))
+                                    {
+                                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-surface); border-radius: 4px;">
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <strong>Why This Is Asked:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.WhyAsked</p>
+                                            </div>
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <strong style="color: var(--color-green);">Strong Answer:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.StrongAnswer</p>
+                                            </div>
+                                            <div>
+                                                <strong style="color: var(--color-red);">Weak Answer:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.WeakAnswer</p>
+                                            </div>
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <StatusBadge Text="@q.ArchetypeLabel"
+                                                 Color="@GetArchetypeColor(q.Archetype)" />
+                                </td>
+                                <td>
+                                    <span class="badge">@q.Difficulty / 5</span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <button class="btn" @onclick="() => ToggleTopic(skillSet.SkillName)">
+                @(_expandedTopics.Contains(skillSet.SkillName) ? "Collapse" : "Expand Questions")
+            </button>
+        </div>
+    }
+
+    @* Behavioral Questions *@
+    @if (_prepPlan.BehavioralQuestions.Count > 0 && (_roundType == "All" || _roundType == "Behavioral"))
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 class="section-title" style="margin-bottom: 0;">Behavioral Questions</h2>
+                <span class="badge">@_prepPlan.BehavioralQuestions.Count questions</span>
+            </div>
+
+            @if (_expandedTopics.Contains("__behavioral"))
+            {
+                <table class="data-table" style="margin-top: 0.75rem; margin-bottom: 0.75rem;">
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Category</th>
+                            <th>Difficulty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in _prepPlan.BehavioralQuestions)
+                        {
+                            <tr @onclick="@(() => ToggleAnswer($"behavioral{q.Question}"))"
+                                style="cursor: pointer;">
+                                <td style="max-width: 400px;">
+                                    @q.Question
+                                    @if (_expandedAnswers.Contains("behavioral" + q.Question))
+                                    {
+                                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-surface); border-radius: 4px;">
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <strong>Why This Is Asked:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.WhyAsked</p>
+                                            </div>
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <strong style="color: var(--color-green);">Strong Answer:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.StrongAnswer</p>
+                                            </div>
+                                            <div>
+                                                <strong style="color: var(--color-red);">Weak Answer:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.WeakAnswer</p>
+                                            </div>
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <StatusBadge Text="@q.ArchetypeLabel" Color="purple" />
+                                </td>
+                                <td>
+                                    <span class="badge">@q.Difficulty / 5</span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <button class="btn" @onclick='() => ToggleTopic("__behavioral")'>
+                @(_expandedTopics.Contains("__behavioral") ? "Collapse" : "Expand Questions")
+            </button>
+        </div>
+    }
+
+    @* System Design Questions *@
+    @if (_prepPlan.SystemDesignQuestions.Count > 0 && (_roundType == "All" || _roundType == "SystemDesign"))
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 class="section-title" style="margin-bottom: 0;">System Design Questions</h2>
+                <span class="badge">@_prepPlan.SystemDesignQuestions.Count questions</span>
+            </div>
+
+            @if (_expandedTopics.Contains("__systemdesign"))
+            {
+                <table class="data-table" style="margin-top: 0.75rem; margin-bottom: 0.75rem;">
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Category</th>
+                            <th>Difficulty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in _prepPlan.SystemDesignQuestions)
+                        {
+                            <tr @onclick="@(() => ToggleAnswer($"design{q.Question}"))"
+                                style="cursor: pointer;">
+                                <td style="max-width: 400px;">
+                                    @q.Question
+                                    @if (_expandedAnswers.Contains("design" + q.Question))
+                                    {
+                                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-surface); border-radius: 4px;">
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <strong>Why This Is Asked:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.WhyAsked</p>
+                                            </div>
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <strong style="color: var(--color-green);">Strong Answer:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.StrongAnswer</p>
+                                            </div>
+                                            <div>
+                                                <strong style="color: var(--color-red);">Weak Answer:</strong>
+                                                <p style="margin: 0.25rem 0 0 0;">@q.WeakAnswer</p>
+                                            </div>
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <StatusBadge Text="@q.ArchetypeLabel" Color="blue" />
+                                </td>
+                                <td>
+                                    <span class="badge">@q.Difficulty / 5</span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <button class="btn" @onclick='() => ToggleTopic("__systemdesign")'>
+                @(_expandedTopics.Contains("__systemdesign") ? "Collapse" : "Expand Questions")
+            </button>
+        </div>
+    }
 }
 
-@if (_filteredTopics.Count == 0 && _planGenerated)
+@* Static Topic Bank (fallback when no vacancy selected) *@
+@if (_prepPlan is null && !_generating)
 {
-    <div class="card">
-        <p class="text-muted">No topics match the selected round type. Try selecting "All Rounds".</p>
+    <div class="card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-yellow);">
+        <p class="text-muted" style="margin: 0;">
+            Select a vacancy above to generate a tailored prep plan with the Interview Prep Engine,
+            or browse the static topic bank below.
+        </p>
     </div>
+
+    @foreach (var topic in _filteredStaticTopics)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 class="section-title" style="margin-bottom: 0;">@topic.Name</h2>
+                <span class="badge">@topic.Questions.Count questions</span>
+            </div>
+            <p class="text-muted" style="margin-top: 0.25rem;">@topic.Description</p>
+
+            @if (topic.KeyConcepts.Count > 0)
+            {
+                <div style="margin-bottom: 0.75rem;">
+                    <strong>Key Concepts:</strong>
+                    @foreach (var concept in topic.KeyConcepts)
+                    {
+                        <span class="badge" style="margin: 0.125rem;">@concept</span>
+                    }
+                </div>
+            }
+
+            @if (_expandedTopics.Contains(topic.Id))
+            {
+                <table class="data-table" style="margin-bottom: 0.75rem;">
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Difficulty</th>
+                            <th>Tags</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in topic.Questions)
+                        {
+                            <tr @onclick="() => ToggleAnswer(topic.Id + q.Question)"
+                                style="cursor: pointer;">
+                                <td>
+                                    @q.Question
+                                    @if (_expandedAnswers.Contains(topic.Id + q.Question))
+                                    {
+                                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-surface); border-radius: 4px;">
+                                            <strong>Expected Answer:</strong>
+                                            <p style="margin: 0.25rem 0 0 0; white-space: pre-wrap;">@q.ExpectedAnswer</p>
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <StatusBadge Text="@q.Difficulty"
+                                                 Color="@GetDifficultyColor(q.Difficulty)" />
+                                </td>
+                                <td class="truncate" style="max-width: 180px;">
+                                    @string.Join(", ", q.Tags)
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @if (topic.Resources.Count > 0 && _expandedTopics.Contains(topic.Id))
+            {
+                <div style="margin-bottom: 0.5rem;">
+                    <strong>Resources:</strong>
+                    <ul style="margin: 0.25rem 0; padding-left: 1.25rem;">
+                        @foreach (var r in topic.Resources)
+                        {
+                            <li>
+                                <a href="@r.Url" target="_blank" rel="noopener">@r.Title</a>
+                                <span class="badge" style="margin-left: 0.25rem;">@r.Type</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <button class="btn" @onclick="() => ToggleTopic(topic.Id)">
+                @(_expandedTopics.Contains(topic.Id) ? "Collapse" : "Expand Questions")
+            </button>
+        </div>
+    }
 }
 
 @code {
-    private string _companyName = "";
-    private string _role = "";
+    private string _selectedVacancyId = "";
     private string _roundType = "All";
-    private bool _planGenerated;
+    private bool _generating;
+    private string? _error;
 
-    private List<TopicArea> _allTopics = [];
-    private List<TopicArea> _filteredTopics = [];
+    private List<JobVacancy> _vacancies = [];
+    private UserProfile _profile = new();
+    private List<InterviewFeedback> _interviewHistory = [];
+
+    private InterviewPrepPlan? _prepPlan;
+    private InterviewLearningPlan? _learningPlan;
+
+    private List<TopicArea> _allStaticTopics = [];
+    private List<TopicArea> _filteredStaticTopics = [];
     private HashSet<string> _expandedTopics = [];
     private HashSet<string> _expandedAnswers = [];
+    private HashSet<string> _expandedLearningItems = [];
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _allTopics = InterviewTopicBank.GetAllTopics().ToList();
-        _filteredTopics = _allTopics;
-        _planGenerated = true;
+        _allStaticTopics = InterviewTopicBank.GetAllTopics().ToList();
+        _filteredStaticTopics = _allStaticTopics;
+
+        try
+        {
+            _vacancies = await VacancyRepo.GetVacanciesAsync();
+            _interviewHistory = await InterviewRepo.GetAllFeedbackAsync();
+            _profile = await LoadProfile();
+        }
+        catch
+        {
+            // Silently handle load errors, leave defaults
+        }
     }
 
-    private void GeneratePlan()
+    private async Task GeneratePlan()
     {
-        _filteredTopics = _roundType switch
-        {
-            "Technical" => _allTopics
-                .Where(t => !t.Id.Equals("behavioral", StringComparison.OrdinalIgnoreCase) &&
-                            !t.Id.Contains("design", StringComparison.OrdinalIgnoreCase))
-                .ToList(),
-            "SystemDesign" => _allTopics
-                .Where(t => t.Id.Contains("design", StringComparison.OrdinalIgnoreCase) ||
-                            t.Id.Contains("architecture", StringComparison.OrdinalIgnoreCase) ||
-                            t.Id.Contains("cloud", StringComparison.OrdinalIgnoreCase))
-                .ToList(),
-            "Behavioral" => _allTopics
-                .Where(t => t.Id.Equals("behavioral", StringComparison.OrdinalIgnoreCase))
-                .ToList(),
-            _ => _allTopics
-        };
-
+        _error = null;
+        _prepPlan = null;
+        _learningPlan = null;
         _expandedTopics.Clear();
         _expandedAnswers.Clear();
-        _planGenerated = true;
+        _expandedLearningItems.Clear();
+
+        if (string.IsNullOrEmpty(_selectedVacancyId))
+        {
+            _error = "Please select a vacancy to generate a prep plan.";
+            return;
+        }
+
+        var vacancy = _vacancies.FirstOrDefault(v => v.Id == _selectedVacancyId);
+        if (vacancy is null)
+        {
+            _error = "Selected vacancy not found.";
+            return;
+        }
+
+        _generating = true;
+        StateHasChanged();
+
+        try
+        {
+            // Generate prep plan using the engine
+            _prepPlan = PrepEngine.GeneratePrepPlan(
+                vacancy,
+                _profile,
+                interviewHistory: _interviewHistory.Count > 0 ? _interviewHistory : null);
+
+            // Generate learning recommendations
+            _learningPlan = LearningPlanner.CreatePlan(
+                _prepPlan,
+                vacancy,
+                _profile,
+                interviewHistory: _interviewHistory.Count > 0 ? _interviewHistory : null);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to generate prep plan: {ex.Message}";
+        }
+        finally
+        {
+            _generating = false;
+        }
+    }
+
+    private List<SkillQuestionSet> GetFilteredSkillSets()
+    {
+        if (_prepPlan is null) return [];
+
+        return _roundType switch
+        {
+            "Behavioral" => [], // Behavioral shown separately
+            "SystemDesign" => [], // System design shown separately
+            _ => _prepPlan.SkillSets
+        };
+    }
+
+    private async Task<UserProfile> LoadProfile()
+    {
+        var profilePath = System.IO.Path.Combine(DataDir.Path, "my-profile.json");
+
+        if (File.Exists(profilePath))
+        {
+            try
+            {
+                var json = await File.ReadAllTextAsync(profilePath);
+                return System.Text.Json.JsonSerializer.Deserialize<UserProfile>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? new UserProfile();
+            }
+            catch
+            {
+                return new UserProfile();
+            }
+        }
+
+        return new UserProfile();
     }
 
     private void ToggleTopic(string topicId)
@@ -181,11 +605,32 @@
             _expandedAnswers.Add(key);
     }
 
+    private void ToggleLearningItem(string skillName)
+    {
+        if (!_expandedLearningItems.Remove(skillName))
+            _expandedLearningItems.Add(skillName);
+    }
+
     private static string GetDifficultyColor(string difficulty) => difficulty.ToLowerInvariant() switch
     {
         "junior" => "green",
         "mid" => "yellow",
         "senior" => "red",
+        _ => "gray"
+    };
+
+    private static string GetArchetypeColor(QuestionArchetype archetype) => archetype switch
+    {
+        QuestionArchetype.WhyChoice => "cyan",
+        QuestionArchetype.HowItWorks => "blue",
+        QuestionArchetype.Performance => "yellow",
+        QuestionArchetype.FailureModes => "red",
+        QuestionArchetype.Tradeoffs => "purple",
+        QuestionArchetype.Debugging => "yellow",
+        QuestionArchetype.Security => "red",
+        QuestionArchetype.LiveCoding => "green",
+        QuestionArchetype.SystemDesign => "blue",
+        QuestionArchetype.Behavioral => "purple",
         _ => "gray"
     };
 }

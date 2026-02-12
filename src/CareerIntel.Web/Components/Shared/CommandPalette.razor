@@ -1,0 +1,230 @@
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (_isOpen)
+{
+    <div class="command-palette-overlay" @onclick="Close" @onkeydown="HandleKeyDown">
+        <div class="command-palette" @onclick:stopPropagation="true">
+            <div class="command-palette-input-wrapper">
+                <span class="command-palette-icon" aria-hidden="true">&#9906;</span>
+                <input @ref="_inputRef"
+                       type="text"
+                       class="command-palette-input"
+                       placeholder="Search pages, actions..."
+                       @bind="_query"
+                       @bind:event="oninput"
+                       @onkeydown="HandleInputKeyDown"
+                       aria-label="Command palette search" />
+                <kbd class="command-palette-kbd">Esc</kbd>
+            </div>
+            <div class="command-palette-results" role="listbox">
+                @if (FilteredCommands.Count == 0)
+                {
+                    <div class="command-palette-empty">No results found</div>
+                }
+                else
+                {
+                    @for (var i = 0; i < FilteredCommands.Count; i++)
+                    {
+                        var idx = i;
+                        var cmd = FilteredCommands[i];
+                        <div class="command-palette-item @(idx == _selectedIndex ? "selected" : "")"
+                             role="option"
+                             aria-selected="@(idx == _selectedIndex)"
+                             @onclick="@(() => ExecuteCommand(cmd))"
+                             @onmouseover="@(() => _selectedIndex = idx)">
+                            <span class="command-palette-item-icon" aria-hidden="true">@cmd.Icon</span>
+                            <div class="command-palette-item-text">
+                                <span class="command-palette-item-label">@cmd.Label</span>
+                                <span class="command-palette-item-category">@cmd.Category</span>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isOpen;
+    private string _query = "";
+    private int _selectedIndex;
+    private ElementReference _inputRef;
+    private DotNetObjectReference<CommandPalette>? _dotNetRef;
+
+    private static readonly List<CommandEntry> AllCommands =
+    [
+        // Overview
+        new("▦", "Dashboard", "Overview", "/"),
+
+        // Jobs
+        new("◆", "Job Browser", "Jobs", "/jobs"),
+        new("⊕", "Remote Jobs", "Jobs", "/jobs/remote"),
+        new("▮", "Tech Demand", "Jobs", "/jobs/tech-demand"),
+        new("⊞", "Scan Image (OCR)", "Jobs", "/jobs/scan-image"),
+        new("▥", "Stack Analysis", "Jobs", "/jobs/stack-analysis"),
+
+        // Applications
+        new("☰", "Application Pipeline", "Applications", "/applications"),
+        new("✓", "Decisions (GO/NO-GO)", "Applications", "/applications/decisions"),
+        new("◎", "Application Strategy", "Applications", "/applications/strategy"),
+
+        // LinkedIn
+        new("✉", "LinkedIn Proposals", "LinkedIn", "/linkedin"),
+        new("◈", "Profile Review", "LinkedIn", "/linkedin/profile"),
+        new("⊕", "Connection Targeting", "LinkedIn", "/linkedin/connections"),
+        new("↗", "Proposal Analytics", "LinkedIn", "/linkedin/stats"),
+
+        // Companies
+        new("⌂", "Companies", "Companies", "/companies"),
+        new("↻", "Scrape Company", "Companies", "/companies/scrape"),
+        new("⛨", "Bridge Check", "Companies", "/companies/bridge-check"),
+
+        // Interview
+        new("▤", "Interview Prep Plans", "Interview", "/interview/prep"),
+        new("♪", "Mock Interview", "Interview", "/interview/mock"),
+        new("★", "Interview Feedback", "Interview", "/interview/feedback"),
+        new("?", "Question Bank", "Interview", "/interview/questions"),
+        new("◎", "Interview Insights", "Interview", "/interview/insights"),
+
+        // Career
+        new("◈", "Market Pulse", "Career", "/career/pulse"),
+        new("↗", "Career Roadmap", "Career", "/career/roadmap"),
+        new("◎", "Skill Gaps", "Career", "/career/gaps"),
+        new("▮", "AI Impact Analysis", "Career", "/career/ai-impact"),
+        new("⇨", "Outreach Strategy", "Career", "/career/outreach"),
+
+        // Learning
+        new("◆", "Learn Plan", "Learning", "/learning"),
+        new("↻", "Adaptive Learning", "Learning", "/learning/adaptive"),
+        new("▤", "Documentation", "Learning", "/learning/docs"),
+        new("⊞", "Micro Learning", "Learning", "/learning/micro"),
+        new("↗", "Learning Progress", "Learning", "/learning/progress"),
+        new("⊕", "Learning Resources", "Learning", "/learning/resources"),
+
+        // Resume & Salary
+        new("▤", "Resume Builder", "Resume", "/resume"),
+        new("⊞", "Resume Review", "Resume", "/resume/review"),
+        new("◎", "ATS Simulator", "Resume", "/resume/simulator"),
+        new("$", "Salary Intelligence", "Salary", "/salary"),
+        new("⇌", "Negotiate Offers", "Salary", "/salary/negotiate"),
+        new("⇔", "Compare Offers", "Salary", "/salary/compare"),
+
+        // System
+        new("◉", "Monitor / Watch Panel", "System", "/monitor"),
+        new("▦", "Interview Schedule", "System", "/monitor/schedule"),
+        new("✓", "Verify Setup", "System", "/settings/verify"),
+        new("◈", "Profile Settings", "System", "/settings/profile"),
+        new("⚙", "Settings", "System", "/settings"),
+    ];
+
+    private List<CommandEntry> FilteredCommands => string.IsNullOrWhiteSpace(_query)
+        ? AllCommands
+        : AllCommands
+            .Where(c => c.Label.Contains(_query, StringComparison.OrdinalIgnoreCase) ||
+                        c.Category.Contains(_query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("eval", """
+                window.__cmdPaletteHandler = function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                        e.preventDefault();
+                        DotNet.invokeMethodAsync('CareerIntel.Web', 'OnCommandPaletteToggle');
+                    }
+                };
+                document.addEventListener('keydown', window.__cmdPaletteHandler);
+                """);
+        }
+
+        if (_isOpen)
+        {
+            try { await _inputRef.FocusAsync(); } catch { /* element may not be rendered yet */ }
+        }
+    }
+
+    [JSInvokable("OnCommandPaletteToggle")]
+    public static void OnToggleStatic()
+    {
+        _staticInstance?.Toggle();
+    }
+
+    private static CommandPalette? _staticInstance;
+
+    protected override void OnInitialized()
+    {
+        _staticInstance = this;
+    }
+
+    public void Toggle()
+    {
+        _isOpen = !_isOpen;
+        _query = "";
+        _selectedIndex = 0;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Close()
+    {
+        _isOpen = false;
+        _query = "";
+        _selectedIndex = 0;
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            Close();
+    }
+
+    private void HandleInputKeyDown(KeyboardEventArgs e)
+    {
+        var commands = FilteredCommands;
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _selectedIndex = Math.Min(_selectedIndex + 1, commands.Count - 1);
+                break;
+            case "ArrowUp":
+                _selectedIndex = Math.Max(_selectedIndex - 1, 0);
+                break;
+            case "Enter":
+                if (commands.Count > 0 && _selectedIndex < commands.Count)
+                    ExecuteCommand(commands[_selectedIndex]);
+                break;
+            case "Escape":
+                Close();
+                break;
+        }
+    }
+
+    private void ExecuteCommand(CommandEntry command)
+    {
+        Close();
+        Nav.NavigateTo(command.Href);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_staticInstance == this)
+            _staticInstance = null;
+
+        _dotNetRef?.Dispose();
+
+        try
+        {
+            await JS.InvokeVoidAsync("eval",
+                "if(window.__cmdPaletteHandler){document.removeEventListener('keydown',window.__cmdPaletteHandler);}");
+        }
+        catch { /* JS may be disconnected */ }
+    }
+
+    private sealed record CommandEntry(string Icon, string Label, string Category, string Href);
+}

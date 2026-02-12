@@ -1,6 +1,7 @@
 @page "/monitor"
 @inject DataDirectoryConfig DataDir
 @inject VacancyRepository VacancyRepo
+@inject CareerIntel.Web.Services.ToastService Toast
 @implements IDisposable
 
 <div class="page-header">
@@ -60,10 +61,6 @@
         <button class="btn btn-primary" style="margin-top: 1rem;" @onclick="SaveConfiguration">
             Save Configuration
         </button>
-        @if (_configSaved)
-        {
-            <span class="badge badge-green" style="margin-left: 0.75rem;">Saved</span>
-        }
     </div>
 
     <div class="card" style="margin-top: 1.5rem;">
@@ -150,7 +147,6 @@
 @code {
     private bool _loading = true;
     private bool _isWatching;
-    private bool _configSaved;
     private DateTime? _lastScanTime;
     private DateTime? _nextScanTime;
     private int _totalWatched;
@@ -280,6 +276,7 @@
     private void StartWatch()
     {
         _isWatching = true;
+        Toast.Success("Watch started");
         _watchCts = new CancellationTokenSource();
         _lastScanTime = DateTime.Now;
         _nextScanTime = DateTime.Now.AddMinutes(_intervalMinutes);
@@ -294,6 +291,7 @@
     private void StopWatch()
     {
         _isWatching = false;
+        Toast.Info("Watch stopped");
         _watchCts?.Cancel();
         _watchCts?.Dispose();
         _watchCts = null;
@@ -333,12 +331,7 @@
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
         await File.WriteAllTextAsync(Path.Combine(DataDir.Path, "watch-config.json"), json);
 
-        _configSaved = true;
-        _ = Task.Delay(2000).ContinueWith(_ =>
-        {
-            _configSaved = false;
-            InvokeAsync(StateHasChanged);
-        });
+        Toast.Success("Watch configuration saved");
     }
 
     private static string FormatTime(DateTime? time) =>

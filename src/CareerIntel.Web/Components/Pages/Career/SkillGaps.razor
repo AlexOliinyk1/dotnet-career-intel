@@ -1,0 +1,381 @@
+@page "/career/gaps"
+@inject VacancyRepository VacancyRepo
+@inject ISkillAnalyzer SkillAnalyzer
+@inject DriftDetector DriftDetector
+@inject DataDirectoryConfig DataDir
+@using CareerIntel.Intelligence
+
+<div class="page-header">
+    <h1 class="page-title">Skill Gaps</h1>
+    <p class="page-subtitle">Analyze what the market demands vs your current skills to find growth opportunities</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing skill gaps..." />
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="card" style="margin-bottom: 1rem; border-color: var(--red);">
+        <p style="color: var(--red);">@_errorMessage</p>
+    </div>
+}
+
+@if (!_loading && _skills.Count == 0)
+{
+    <div class="card" style="margin-top: 1rem;">
+        <p class="text-muted">
+            Add your skills in the <a href="/settings/profile">Profile page</a> first to see skill gap analysis.
+        </p>
+    </div>
+}
+else if (!_loading && _report is not null)
+{
+    <div class="card-grid">
+        <StatCard Label="Market Coverage"
+                  Value="@($"{_report.MarketCoverage:F0}%")"
+                  Sub="of top market skills"
+                  CssClass="@($"text-{GetCoverageColor(_report.MarketCoverage)}")" />
+        <StatCard Label="Your Skills"
+                  Value="@_report.YourSkillCount.ToString()"
+                  Sub="in your profile" />
+        <StatCard Label="Skills Matched"
+                  Value="@_report.MatchedSkills.Count.ToString()"
+                  Sub="align with market demand"
+                  CssClass="text-green" />
+        <StatCard Label="Skills Missing"
+                  Value="@_report.MissingSkills.Count.ToString()"
+                  Sub="high-demand gaps"
+                  CssClass="text-red" />
+    </div>
+
+    <!-- Coverage Meter -->
+    <div class="card" style="text-align: center; padding: 2rem; margin-top: 1.5rem;">
+        <div style="font-size: 3rem; font-weight: 700; color: var(--color-@GetCoverageColor(_report.MarketCoverage));">
+            @($"{_report.MarketCoverage:F0}%")
+        </div>
+        <div class="text-muted">Market Skills Coverage</div>
+        <div style="width: 100%; height: 8px; background: var(--bg-hover); border-radius: 4px; margin-top: 1rem; overflow: hidden;">
+            <div style="width: @($"{_report.MarketCoverage:F0}")%; height: 100%; background: var(--color-@GetCoverageColor(_report.MarketCoverage)); border-radius: 4px;"></div>
+        </div>
+    </div>
+
+    <!-- Skill Demand Analysis (from ISkillAnalyzer) -->
+    @if (_skillDemand.Count > 0)
+    {
+        <h2 class="section-title" style="margin-top: 2rem;">Market Skill Demand</h2>
+        <div class="card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Demand Score</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var sp in _skillDemand.Take(20))
+                    {
+                        var youHaveIt = _skills.Any(s => s.Equals(sp.SkillName, StringComparison.OrdinalIgnoreCase));
+                        <tr>
+                            <td>
+                                <span style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-@(youHaveIt ? "green" : "red")); display: inline-block;"></span>
+                                    <strong>@sp.SkillName</strong>
+                                </span>
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <div style="flex: 1; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; max-width: 150px;">
+                                        <div style="width: @($"{sp.MarketDemandScore:F0}")%; height: 100%; background: var(--color-cyan); border-radius: 3px;"></div>
+                                    </div>
+                                    <span class="text-cyan">@($"{sp.MarketDemandScore:F0}%")</span>
+                                </div>
+                            </td>
+                            <td>
+                                <StatusBadge Text="@(youHaveIt ? "Have" : "Missing")"
+                                             Color="@(youHaveIt ? "green" : "red")" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- Drift Detection -->
+    @if (_driftSummary is not null && _driftSummary.TotalChanges > 0)
+    {
+        <h2 class="section-title" style="margin-top: 2rem;">Market Drift Detection</h2>
+        <div class="card-grid" style="margin-bottom: 1rem;">
+            <StatCard Label="Changes Detected"
+                      Value="@_driftSummary.TotalChanges.ToString()"
+                      Sub="across vacancies" />
+            <StatCard Label="Vacancies Changed"
+                      Value="@_driftSummary.VacanciesChanged.ToString()" />
+            <StatCard Label="Seniority Trend"
+                      Value="@_driftSummary.SeniorityTrend"
+                      CssClass="@GetTrendCss(_driftSummary.SeniorityTrend)" />
+            <StatCard Label="Salary Trend"
+                      Value="@_driftSummary.SalaryTrend"
+                      CssClass="@GetTrendCss(_driftSummary.SalaryTrend)" />
+        </div>
+
+        <div class="card">
+            <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                @if (_driftSummary.RisingSkills.Count > 0)
+                {
+                    <div style="flex: 1; min-width: 200px;">
+                        <h3 class="section-title">Rising Skills</h3>
+                        @foreach (var (skill, count) in _driftSummary.RisingSkills.Take(10))
+                        {
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+                                <span>@skill</span>
+                                <StatusBadge Text="@($"+{count}")" Color="green" />
+                            </div>
+                        }
+                    </div>
+                }
+                @if (_driftSummary.FadingSkills.Count > 0)
+                {
+                    <div style="flex: 1; min-width: 200px;">
+                        <h3 class="section-title">Fading Skills</h3>
+                        @foreach (var (skill, count) in _driftSummary.FadingSkills.Take(10))
+                        {
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0;">
+                                <span>@skill</span>
+                                <StatusBadge Text="@($"-{count}")" Color="red" />
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Matched Skills -->
+    @if (_report.MatchedSkills.Count > 0)
+    {
+        <h2 class="section-title" style="margin-top: 2rem;">Your Matched Skills</h2>
+        <div class="card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Market Demand</th>
+                        <th>Demand %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var skill in _report.MatchedSkills)
+                    {
+                        <tr>
+                            <td>
+                                <span style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-green); display: inline-block;"></span>
+                                    <strong>@skill.SkillName</strong>
+                                </span>
+                            </td>
+                            <td>@skill.DemandCount</td>
+                            <td class="text-cyan">@($"{skill.DemandPercent:F1}%")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- Missing Skills -->
+    @if (_report.MissingSkills.Count > 0)
+    {
+        <h2 class="section-title" style="margin-top: 2rem;">Missing High-Demand Skills</h2>
+        <div class="card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Market Demand</th>
+                        <th>Demand %</th>
+                        <th>Priority</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var skill in _report.MissingSkills)
+                    {
+                        <tr>
+                            <td>
+                                <span style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-@GetPriorityColor(skill.Priority)); display: inline-block;"></span>
+                                    <strong>@skill.SkillName</strong>
+                                </span>
+                            </td>
+                            <td>@skill.DemandCount</td>
+                            <td class="text-cyan">@($"{skill.DemandPercent:F1}%")</td>
+                            <td>
+                                <StatusBadge Text="@skill.Priority"
+                                             Color="@GetPriorityColor(skill.Priority)" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <!-- Market Insight -->
+    <div class="card" style="margin-top: 1.5rem; border-left: 3px solid var(--color-cyan);">
+        <h2 class="section-title">Market Insight</h2>
+        <p style="margin: 0;">
+            @GetMarketInsight()
+        </p>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _errorMessage;
+    private List<string> _skills = [];
+    private MarketSkillGapReport? _report;
+    private IReadOnlyList<SkillProfile> _skillDemand = [];
+    private DriftSummary? _driftSummary;
+    private readonly CareerEvolutionEngine _engine = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadSkills();
+
+            if (_skills.Count > 0)
+            {
+                var vacancies = await VacancyRepo.GetVacanciesAsync();
+
+                // Use CareerEvolutionEngine for gap analysis (existing behavior)
+                _report = _engine.AnalyzeSkillGaps(vacancies, _skills);
+
+                // Use ISkillAnalyzer for detailed skill demand analysis
+                _skillDemand = await SkillAnalyzer.AnalyzeSkillDemandAsync(vacancies);
+
+                // Use DriftDetector to detect changes between recent and older vacancies
+                await DetectSkillDrift(vacancies);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to analyze skill gaps: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task DetectSkillDrift(List<JobVacancy> vacancies)
+    {
+        try
+        {
+            // Split vacancies into two time windows for drift detection:
+            // "previous" = older half, "current" = newer half
+            var sorted = vacancies
+                .Where(v => v.PostedDate != default)
+                .OrderBy(v => v.PostedDate)
+                .ToList();
+
+            if (sorted.Count < 4)
+                return;
+
+            var midpoint = sorted.Count / 2;
+            var previousVacancies = sorted.Take(midpoint).ToList();
+            var currentVacancies = sorted.Skip(midpoint).ToList();
+
+            var changes = DriftDetector.DetectChanges(currentVacancies, previousVacancies);
+
+            if (changes.Count > 0)
+            {
+                _driftSummary = DriftDetector.AnalyzeDrift(changes);
+            }
+        }
+        catch
+        {
+            // Drift detection is supplementary; do not fail the page
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private async Task LoadSkills()
+    {
+        var path = Path.Combine(DataDir.Path, "my-profile.json");
+        if (!File.Exists(path))
+            return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("skills", out var skills) && skills.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var skill in skills.EnumerateArray())
+                {
+                    var val = skill.GetString();
+                    if (!string.IsNullOrWhiteSpace(val))
+                        _skills.Add(val);
+                }
+            }
+        }
+        catch
+        {
+            // Use empty skills on parse failure
+        }
+    }
+
+    private static string GetCoverageColor(double coverage) => coverage switch
+    {
+        >= 70 => "green",
+        >= 40 => "yellow",
+        _ => "red"
+    };
+
+    private static string GetPriorityColor(string priority) => priority switch
+    {
+        "Critical" => "red",
+        "High" => "yellow",
+        _ => "gray"
+    };
+
+    private static string GetTrendCss(string trend) => trend switch
+    {
+        "Rising" => "text-green",
+        "Falling" => "text-red",
+        _ => "text-muted"
+    };
+
+    private string GetMarketInsight()
+    {
+        if (_report is null)
+            return "";
+
+        var matchCount = _report.MatchedSkills.Count;
+        var missingCount = _report.MissingSkills.Count;
+        var criticalCount = _report.MissingSkills.Count(s => s.Priority == "Critical");
+        var coverage = _report.MarketCoverage;
+
+        if (coverage >= 70)
+            return $"Strong market alignment. You cover {coverage:F0}% of top market skills with {matchCount} matched technologies. "
+                 + (missingCount > 0
+                     ? $"Consider adding {missingCount} missing skills to further strengthen your profile."
+                     : "Your skill set is well-positioned for the current market.");
+
+        if (coverage >= 40)
+            return $"Moderate market coverage at {coverage:F0}%. You match {matchCount} in-demand skills but are missing {missingCount} key technologies. "
+                 + (criticalCount > 0
+                     ? $"Focus on the {criticalCount} critical-priority skills first -- these appear in over 20% of job listings."
+                     : "Prioritize high-demand missing skills to improve your competitiveness.");
+
+        return $"Your current coverage is {coverage:F0}% with {matchCount} matched skills out of {_report.TotalMarketSkills} tracked market skills. "
+             + $"There are {missingCount} in-demand skills missing from your profile"
+             + (criticalCount > 0
+                 ? $", including {criticalCount} critical-priority gaps. Addressing these will significantly improve your market positioning."
+                 : ". Building these skills will open up more opportunities in the current market.");
+    }
+}

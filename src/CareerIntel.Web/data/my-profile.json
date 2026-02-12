@@ -1,0 +1,17 @@
+{
+  "personal": {
+    "name": "Oleksandr Oliinyk",
+    "title": "Software Engineer ",
+    "email": "alex.oliinyk1@gmil.com",
+    "location": "Ukraine"
+  },
+  "skills": [
+    "aws, azure, C#, react, angular"
+  ],
+  "experiences": [],
+  "preferences": {
+    "minSalaryUsd": 6000,
+    "targetSalaryUsd": 10000,
+    "remoteOnly": true
+  }
+}

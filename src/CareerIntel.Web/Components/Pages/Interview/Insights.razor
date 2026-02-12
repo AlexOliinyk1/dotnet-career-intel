@@ -1,0 +1,437 @@
+@page "/interview/insights"
+@using CareerIntel.Intelligence.Models
+@using CareerIntel.Matching
+@inject InterviewRepository InterviewRepo
+@inject InterviewFeedbackEngine FeedbackEngine
+@inject TopicInferenceEngine TopicEngine
+@inject VacancyRepository VacancyRepo
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Interview Insights</h1>
+    <p class="page-subtitle">Aggregated analytics across all your interview feedback to track performance trends</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing interview data..." />
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-red);">
+        <p style="color: var(--color-red); margin: 0;">@_error</p>
+    </div>
+}
+
+@if (!_loading)
+{
+    @if (_feedbacks.Count == 0)
+    {
+        <div class="card">
+            <p class="text-muted" style="text-align: center; padding: 2rem;">
+                No interview data yet. Record your first interview feedback on the
+                <a href="/interview/feedback">Feedback</a> page to start seeing insights.
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="card-grid" style="margin-bottom: 1rem;">
+            <StatCard Label="Total Interviews" Value="@_insights.TotalInterviews.ToString()" />
+            <StatCard Label="Overall Pass Rate"
+                      Value="@($"{_insights.OverallPassRate * 100:F0}%")"
+                      CssClass="@(_insights.OverallPassRate >= 0.5 ? "stat-success" : "stat-danger")" />
+            <StatCard Label="Most Common Weak Area"
+                      Value="@(_topWeakArea ?? "-")" />
+            <StatCard Label="Avg Difficulty"
+                      Value="@(_feedbacks.Count > 0 ? $"{_feedbacks.Average(f => f.DifficultyRating):F1}" : "-")" />
+        </div>
+
+        @* Trend indicator *@
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <h2 class="section-title" style="margin-bottom: 0;">Performance Trend</h2>
+                <StatusBadge Text="@_insights.Trend"
+                             Color="@GetTrendColor(_insights.Trend)" />
+            </div>
+            <p class="text-muted" style="margin-top: 0.5rem;">
+                @GetTrendDescription(_insights.Trend)
+            </p>
+        </div>
+
+        @* Pass Rate by Round *@
+        <div class="card" style="margin-bottom: 1rem;">
+            <h2 class="section-title">Pass Rate by Round</h2>
+            @if (_passRateByRound.Count > 0)
+            {
+                <BarChart Data="@_passRateByRound" />
+            }
+            else
+            {
+                <p class="text-muted">No round data available</p>
+            }
+        </div>
+
+        @* Weak Area Frequency *@
+        <div class="card" style="margin-bottom: 1rem;">
+            <h2 class="section-title">Weak Area Frequency</h2>
+            @if (_weakAreaFrequency.Count > 0)
+            {
+                <BarChart Data="@_weakAreaFrequency" />
+            }
+            else
+            {
+                <p class="text-muted">No weak areas recorded yet</p>
+            }
+        </div>
+
+        @* Repeating Weak Areas *@
+        @if (_insights.RepeatingWeakAreas.Count > 0)
+        {
+            <div class="card" style="margin-bottom: 1rem;">
+                <h2 class="section-title">Repeating Weak Areas</h2>
+                <p class="text-muted" style="margin-bottom: 0.75rem;">
+                    These areas appeared in 2 or more interviews and require focused attention.
+                </p>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Area</th>
+                            <th>Occurrences</th>
+                            <th>Priority</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (area, count) in _insights.RepeatingWeakAreas)
+                        {
+                            <tr>
+                                <td><strong>@area</strong></td>
+                                <td class="text-cyan">@count</td>
+                                <td>
+                                    <StatusBadge Text="@(count >= 4 ? "Critical" : count >= 3 ? "High" : "Medium")"
+                                                 Color="@(count >= 4 ? "red" : count >= 3 ? "red" : "yellow")" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @* Top Rejection Reasons *@
+        @if (_insights.TopRejectionReasons.Count > 0)
+        {
+            <div class="card" style="margin-bottom: 1rem;">
+                <h2 class="section-title">Top Rejection Reasons</h2>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Reason</th>
+                            <th>Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (reason, count) in _insights.TopRejectionReasons.Take(10))
+                        {
+                            <tr>
+                                <td>@reason</td>
+                                <td class="text-cyan">@count</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+
+    @* Topic Inference Analysis (always shown, independent of interview feedback) *@
+    <div class="card" style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 class="section-title" style="margin-bottom: 0;">Topic Demand Analysis</h2>
+            <button class="btn btn-primary" @onclick="RunTopicAnalysis" disabled="@_analyzingTopics">
+                @(_analyzingTopics ? "Analyzing..." : _marketDemand is not null ? "Re-analyze" : "Analyze Market Topics")
+            </button>
+        </div>
+        <p class="text-muted" style="margin-top: 0.25rem;">
+            Uses the Topic Inference Engine to analyze interview topic demand across your tracked vacancies.
+        </p>
+
+        @if (_marketDemand is not null)
+        {
+            <div class="card-grid" style="margin: 0.75rem 0;">
+                <StatCard Label="Vacancies Analyzed" Value="@_marketDemand.TotalVacanciesAnalyzed.ToString()" />
+                <StatCard Label="Topics Detected" Value="@_marketDemand.TopicRankings.Count.ToString()" />
+                <StatCard Label="Hottest Skills" Value="@_marketDemand.HottestSkills.Count.ToString()" />
+            </div>
+
+            @* Topic Rankings *@
+            @if (_marketDemand.TopicRankings.Count > 0)
+            {
+                <h3 style="margin-top: 0.75rem; margin-bottom: 0.5rem;">Topic Rankings by Demand</h3>
+                <table class="data-table" style="margin-bottom: 0.75rem;">
+                    <thead>
+                        <tr>
+                            <th>Topic</th>
+                            <th>Vacancies</th>
+                            <th>% of Market</th>
+                            <th>Avg Salary</th>
+                            <th>Top Companies</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var topic in _marketDemand.TopicRankings)
+                        {
+                            <tr>
+                                <td><strong>@topic.TopicName</strong></td>
+                                <td class="text-cyan">@topic.VacancyCount</td>
+                                <td>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <div style="width: 60px; height: 6px; background: var(--border-color); border-radius: 3px;">
+                                            <div style="width: @($"{Math.Min(topic.PercentageOfVacancies, 100):F0}%"); height: 100%;
+                                                        background: var(--color-cyan); border-radius: 3px;"></div>
+                                        </div>
+                                        <span>@($"{topic.PercentageOfVacancies:F1}%")</span>
+                                    </div>
+                                </td>
+                                <td class="text-muted">
+                                    @(topic.AvgSalaryForTopic > 0 ? $"${topic.AvgSalaryForTopic:N0}" : "-")
+                                </td>
+                                <td class="truncate" style="max-width: 200px;">
+                                    @string.Join(", ", topic.TopCompanies.Take(3))
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @* Hottest Skills *@
+            @if (_marketDemand.HottestSkills.Count > 0)
+            {
+                <h3 style="margin-top: 0.75rem; margin-bottom: 0.5rem;">Hottest Skills</h3>
+                <div>
+                    @foreach (var skill in _marketDemand.HottestSkills)
+                    {
+                        <span class="badge" style="margin: 0.125rem;">@skill</span>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    @* Gap Analysis Section *@
+    @if (_gapAnalysis is not null)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 class="section-title" style="margin-bottom: 0;">Skill Gap Analysis</h2>
+                <StatusBadge Text="@($"Readiness: {_gapAnalysis.ReadinessScore:F0}%")"
+                             Color="@(_gapAnalysis.ReadinessScore >= 70 ? "green" : _gapAnalysis.ReadinessScore >= 40 ? "yellow" : "red")" />
+            </div>
+            <p class="text-muted" style="margin-top: 0.25rem;">
+                Compares your profile skills against your most recent interviewed vacancy.
+            </p>
+
+            <div style="display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 0.75rem;">
+                @if (_gapAnalysis.MatchedTopics.Count > 0)
+                {
+                    <div>
+                        <strong style="color: var(--color-green);">Matched Topics (@_gapAnalysis.MatchedTopics.Count)</strong>
+                        <div style="margin-top: 0.25rem;">
+                            @foreach (var topic in _gapAnalysis.MatchedTopics)
+                            {
+                                <span class="badge" style="margin: 0.125rem; background: rgba(0,255,100,0.1); color: var(--color-green);">
+                                    @topic.TopicName (@topic.Confidence%)
+                                </span>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_gapAnalysis.GapTopics.Count > 0)
+                {
+                    <div>
+                        <strong style="color: var(--color-red);">Gap Topics (@_gapAnalysis.GapTopics.Count)</strong>
+                        <div style="margin-top: 0.25rem;">
+                            @foreach (var topic in _gapAnalysis.GapTopics)
+                            {
+                                <span class="badge" style="margin: 0.125rem; background: rgba(255,100,100,0.1); color: var(--color-red);">
+                                    @topic.TopicName (@topic.Confidence%)
+                                </span>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_gapAnalysis.BonusTopics.Count > 0)
+                {
+                    <div>
+                        <strong style="color: var(--color-cyan);">Bonus Topics (@_gapAnalysis.BonusTopics.Count)</strong>
+                        <div style="margin-top: 0.25rem;">
+                            @foreach (var topic in _gapAnalysis.BonusTopics)
+                            {
+                                <span class="badge" style="margin: 0.125rem;">@topic.TopicName</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (_gapAnalysis.RecommendedStudyOrder.Count > 0)
+            {
+                <div style="margin-top: 0.75rem;">
+                    <strong>Recommended Study Order:</strong>
+                    <ol style="margin: 0.25rem 0; padding-left: 1.25rem;">
+                        @foreach (var topic in _gapAnalysis.RecommendedStudyOrder)
+                        {
+                            <li>@topic</li>
+                        }
+                    </ol>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private bool _analyzingTopics;
+    private string? _error;
+    private List<InterviewFeedback> _feedbacks = [];
+    private InterviewInsights _insights = new();
+    private Dictionary<string, int> _passRateByRound = [];
+    private Dictionary<string, int> _weakAreaFrequency = [];
+    private string? _topWeakArea;
+
+    // Topic inference results
+    private MarketTopicDemand? _marketDemand;
+    private TopicGapAnalysis? _gapAnalysis;
+    private List<JobVacancy> _vacancies = [];
+    private UserProfile _profile = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _feedbacks = await InterviewRepo.GetAllFeedbackAsync();
+
+            if (_feedbacks.Count > 0)
+            {
+                // Get insights from the feedback engine
+                _insights = FeedbackEngine.GetInsights(_feedbacks);
+
+                // Pass rate by round: convert double (0-100) to int for BarChart
+                var passRateRaw = InterviewRepo.GetPassRateByRound(_feedbacks);
+                _passRateByRound = passRateRaw.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => (int)Math.Round(kvp.Value));
+
+                // Weak area frequency (already returns Dictionary<string, int>)
+                _weakAreaFrequency = InterviewRepo.GetWeakAreaFrequency(_feedbacks);
+
+                // Top weak area for StatCard
+                _topWeakArea = _weakAreaFrequency.Count > 0
+                    ? _weakAreaFrequency.OrderByDescending(kvp => kvp.Value).First().Key
+                    : null;
+            }
+
+            // Load vacancies and profile for topic analysis
+            _vacancies = await VacancyRepo.GetVacanciesAsync();
+            _profile = await LoadProfile();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load interview data: {ex.Message}";
+        }
+
+        _loading = false;
+    }
+
+    private void RunTopicAnalysis()
+    {
+        _analyzingTopics = true;
+        _error = null;
+        _marketDemand = null;
+        _gapAnalysis = null;
+        StateHasChanged();
+
+        try
+        {
+            if (_vacancies.Count == 0)
+            {
+                _error = "No vacancies found. Scrape some vacancies first to run topic analysis.";
+                return;
+            }
+
+            // Analyze market demand using TopicInferenceEngine
+            _marketDemand = TopicEngine.AnalyzeMarketDemand(_vacancies);
+
+            // Run gap analysis against the most recently interviewed vacancy (if any)
+            // Fall back to most recent vacancy overall
+            JobVacancy? targetVacancy = null;
+
+            if (_feedbacks.Count > 0)
+            {
+                var recentCompany = _feedbacks
+                    .OrderByDescending(f => f.InterviewDate)
+                    .Select(f => f.Company)
+                    .FirstOrDefault();
+
+                if (!string.IsNullOrEmpty(recentCompany))
+                {
+                    targetVacancy = _vacancies
+                        .FirstOrDefault(v => v.Company.Equals(recentCompany, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+
+            targetVacancy ??= _vacancies.FirstOrDefault();
+
+            if (targetVacancy is not null && _profile.Skills.Count > 0)
+            {
+                _gapAnalysis = TopicEngine.AnalyzeGaps(targetVacancy, _profile);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Topic analysis failed: {ex.Message}";
+        }
+        finally
+        {
+            _analyzingTopics = false;
+        }
+    }
+
+    private async Task<UserProfile> LoadProfile()
+    {
+        var profilePath = System.IO.Path.Combine(DataDir.Path, "my-profile.json");
+
+        if (File.Exists(profilePath))
+        {
+            try
+            {
+                var json = await File.ReadAllTextAsync(profilePath);
+                return System.Text.Json.JsonSerializer.Deserialize<UserProfile>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? new UserProfile();
+            }
+            catch
+            {
+                return new UserProfile();
+            }
+        }
+
+        return new UserProfile();
+    }
+
+    private static string GetTrendColor(string trend) => trend switch
+    {
+        "Improving" => "green",
+        "Declining" => "red",
+        _ => "yellow"
+    };
+
+    private static string GetTrendDescription(string trend) => trend switch
+    {
+        "Improving" => "Your interview performance is trending upward. Keep up the good work!",
+        "Declining" => "Your recent interview performance has declined. Review your weak areas and practice targeted exercises.",
+        _ => "Your interview performance is stable. Consider focusing on weak areas to push for improvement."
+    };
+}

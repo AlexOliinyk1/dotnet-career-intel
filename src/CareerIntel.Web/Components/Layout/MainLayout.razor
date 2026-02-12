@@ -1,19 +1,63 @@
 @inherits LayoutComponentBase
+@using CareerIntel.Web.Components.Shared
 
 <div class="app-layout">
-    <nav class="sidebar">
+    <CommandPalette />
+    <ToastContainer />
+    <nav class="sidebar @(_sidebarOpen ? "sidebar-open" : "")" role="navigation" aria-label="Main navigation">
         <div class="sidebar-brand">
-            <span class="brand-icon">CI</span>
+            <span class="brand-icon" aria-hidden="true">CI</span>
             <span class="brand-text">CareerIntel</span>
         </div>
-        <NavMenu />
+        <button class="sidebar-toggle" @onclick="ToggleSidebar" aria-label="Toggle navigation menu">
+            <span aria-hidden="true">☰</span>
+        </button>
+        <div class="nav-container @(_sidebarOpen ? "nav-open" : "")">
+            <NavMenu />
+        </div>
     </nav>
-    <main class="main-content">
+    <div class="sidebar-overlay @(_sidebarOpen ? "visible" : "")" @onclick="ToggleSidebar"></div>
+    <main class="main-content" role="main">
         <div class="top-bar">
-            <span class="page-context">Admin Dashboard</span>
+            <button class="sidebar-toggle-mobile" @onclick="ToggleSidebar" aria-label="Toggle navigation menu">
+                <span aria-hidden="true">☰</span>
+            </button>
+            <span class="page-context">CareerIntel Dashboard</span>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 0.75rem;">
+                <button class="btn btn-secondary btn-sm command-palette-trigger" onclick="document.dispatchEvent(new KeyboardEvent('keydown', {key: 'k', ctrlKey: true}))" title="Search pages (Ctrl+K)">
+                    <span aria-hidden="true">&#9906;</span> <span class="hide-mobile">Search</span> <kbd style="font-size: 10px; padding: 1px 4px; background: var(--bg-hover); border-radius: 3px; margin-left: 4px;">Ctrl+K</kbd>
+                </button>
+                <a href="/api/auth/logout" class="btn btn-secondary btn-sm">Sign Out</a>
+            </div>
         </div>
         <div class="content-area">
-            @Body
+            <ErrorBoundary @ref="_errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="ex">
+                    <div class="card" style="border-left: 4px solid var(--red); margin: 2rem 0;">
+                        <h2 style="color: var(--red); margin-bottom: 0.5rem;">Something went wrong</h2>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                            An unexpected error occurred while rendering this page.
+                        </p>
+                        <details style="margin-bottom: 1rem;">
+                            <summary style="cursor: pointer; color: var(--text-muted);">Error details</summary>
+                            <pre style="white-space: pre-wrap; font-size: 12px; margin-top: 0.5rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 4px; color: var(--red);">@ex.Message</pre>
+                        </details>
+                        <button class="btn btn-primary" @onclick="ResetError">Reload Page</button>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         </div>
     </main>
 </div>
+
+@code {
+    private ErrorBoundary? _errorBoundary;
+    private bool _sidebarOpen;
+
+    private void ResetError() => _errorBoundary?.Recover();
+
+    private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
+}

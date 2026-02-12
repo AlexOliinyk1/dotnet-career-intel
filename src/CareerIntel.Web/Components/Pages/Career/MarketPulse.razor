@@ -1,0 +1,156 @@
+@page "/career/pulse"
+@inject VacancyRepository VacancyRepo
+@using CareerIntel.Intelligence
+
+<div class="page-header">
+    <h1 class="page-title">Market Pulse</h1>
+    <p class="page-subtitle">Technology demand trends and skill analysis from scraped job vacancies</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing market pulse..." />
+
+@if (!_loading)
+{
+    <div class="card-grid">
+        <StatCard Label="Total Vacancies"
+                  Value="@_report.TotalVacancies.ToString("N0")"
+                  Sub="scraped job listings" />
+        <StatCard Label="Unique Skills"
+                  Value="@_report.SkillDemand.Count.ToString("N0")"
+                  Sub="technologies tracked" />
+        <StatCard Label="Rising Skills"
+                  Value="@_report.RisingSkills.Count.ToString()"
+                  Sub="trending upward"
+                  CssClass="text-cyan" />
+        <StatCard Label="Declining Skills"
+                  Value="@_report.DecliningSkills.Count.ToString()"
+                  Sub="trending downward" />
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Top 20 In-Demand Skills</h2>
+        @if (_report.SkillDemand.Count > 0)
+        {
+            <BarChart Data="@_report.SkillDemand.Take(20).ToDictionary(kv => kv.Key, kv => kv.Value)" />
+        }
+        else
+        {
+            <p class="text-muted" style="text-align: center; padding: 1.5rem;">
+                No skill data extracted from vacancies yet. Run a <a href="/jobs">Scan</a> to scrape job listings with technology tags.
+            </p>
+        }
+    </div>
+
+    <h2 class="section-title" style="margin-top: 2rem;">Rising Skills</h2>
+    <div class="card">
+        @if (_report.RisingSkills.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Mentions</th>
+                        <th>Demand %</th>
+                        <th>Trend Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var skill in _report.RisingSkills)
+                    {
+                        <tr>
+                            <td><strong>@skill.SkillName</strong></td>
+                            <td>@skill.TotalMentions</td>
+                            <td class="text-cyan">@($"{skill.DemandPercent:F1}%")</td>
+                            <td>
+                                <StatusBadge Text="@($"+{skill.TrendChange:F1}%")"
+                                             Color="green" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No rising skill trends detected yet. More data needed.</p>
+        }
+    </div>
+
+    <h2 class="section-title" style="margin-top: 2rem;">Declining Skills</h2>
+    <div class="card">
+        @if (_report.DecliningSkills.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Mentions</th>
+                        <th>Demand %</th>
+                        <th>Trend Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var skill in _report.DecliningSkills)
+                    {
+                        <tr>
+                            <td><strong>@skill.SkillName</strong></td>
+                            <td>@skill.TotalMentions</td>
+                            <td class="text-muted">@($"{skill.DemandPercent:F1}%")</td>
+                            <td>
+                                <StatusBadge Text="@($"{skill.TrendChange:F1}%")"
+                                             Color="red" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No declining trends detected.</p>
+        }
+    </div>
+
+    <h2 class="section-title" style="margin-top: 2rem;">Highest-Paying Skills</h2>
+    <div class="card">
+        @if (_report.TopPayingSkills.Count > 0)
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Avg Salary</th>
+                        <th>Data Points</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var skill in _report.TopPayingSkills)
+                    {
+                        <tr>
+                            <td><strong>@skill.SkillName</strong></td>
+                            <td class="text-cyan">@($"${skill.AverageSalary:N0}")</td>
+                            <td class="text-muted">@skill.DataPoints</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">No salary data available yet. Vacancies with salary info needed.</p>
+        }
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private MarketPulseReport _report = new();
+    private readonly CareerEvolutionEngine _engine = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var vacancies = await VacancyRepo.GetVacanciesAsync();
+        _report = _engine.AnalyzeMarketPulse(vacancies);
+        _loading = false;
+    }
+}

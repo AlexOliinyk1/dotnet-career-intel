@@ -1,5 +1,6 @@
 @page "/settings/profile"
 @inject DataDirectoryConfig DataDir
+@inject CareerIntel.Web.Services.ToastService Toast
 
 <div class="page-header">
     <h1 class="page-title">Profile</h1>
@@ -143,10 +144,6 @@
 
     <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: center;">
         <button class="btn btn-primary" @onclick="SaveProfile">Save Profile</button>
-        @if (_saveMessage is not null)
-        {
-            <span class="badge badge-@(_saveSuccess ? "green" : "red")">@_saveMessage</span>
-        }
     </div>
 }
 
@@ -174,9 +171,6 @@
     private int _targetSalary;
     private string _remoteOnly = "true";
 
-    // Save state
-    private string? _saveMessage;
-    private bool _saveSuccess;
 
     protected override async Task OnInitializedAsync()
     {
@@ -284,20 +278,12 @@
             var json = JsonSerializer.Serialize(profile, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(Path.Combine(DataDir.Path, "my-profile.json"), json);
 
-            _saveSuccess = true;
-            _saveMessage = "Profile saved successfully";
+            Toast.Success("Profile saved successfully");
         }
         catch (Exception ex)
         {
-            _saveSuccess = false;
-            _saveMessage = $"Error: {ex.Message}";
+            Toast.Error($"Failed to save profile: {ex.Message}");
         }
-
-        _ = Task.Delay(3000).ContinueWith(_ =>
-        {
-            _saveMessage = null;
-            InvokeAsync(StateHasChanged);
-        });
     }
 
     private void AddSkill()

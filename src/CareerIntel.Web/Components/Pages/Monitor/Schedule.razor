@@ -1,5 +1,6 @@
 @page "/monitor/schedule"
 @inject DataDirectoryConfig DataDir
+@inject CareerIntel.Web.Services.ToastService Toast
 
 <div class="page-header">
     <h1 class="page-title">Interview Schedule</h1>
@@ -62,10 +63,6 @@
                     disabled="@string.IsNullOrWhiteSpace(_newCompany)">
                 Add Interview
             </button>
-            @if (_addedMessage is not null)
-            {
-                <span class="badge badge-green">@_addedMessage</span>
-            }
         </div>
     </div>
 
@@ -121,7 +118,6 @@
 @code {
     private bool _loading = true;
     private List<ScheduledInterview> _interviews = [];
-    private string? _addedMessage;
     private int _upcomingCount;
     private int _todayCount;
     private int _pastCount;
@@ -211,18 +207,13 @@
         await SaveSchedule();
         RecalculateCounts();
 
-        _addedMessage = $"Added: {_newCompany.Trim()}";
+        Toast.Success($"Interview with {_newCompany.Trim()} added");
+
         _newCompany = "";
         _newNotes = "";
         _newDate = DateTime.Today.AddDays(1);
         _newTime = new TimeOnly(10, 0);
         _newRound = "Screening";
-
-        _ = Task.Delay(3000).ContinueWith(_ =>
-        {
-            _addedMessage = null;
-            InvokeAsync(StateHasChanged);
-        });
     }
 
     private async Task RemoveInterview(ScheduledInterview interview)
@@ -230,6 +221,7 @@
         _interviews.Remove(interview);
         await SaveSchedule();
         RecalculateCounts();
+        Toast.Info($"Removed interview with {interview.Company}");
     }
 
     private void RecalculateCounts()

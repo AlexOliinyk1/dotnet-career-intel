@@ -1,0 +1,41 @@
+@* Reusable filter bar component that provides consistent filter UI across pages. *@
+@* Usage: <FilterBar SearchPlaceholder="Search..." OnFilterChanged="ApplyFilters"> *@
+@*            <FilterBarItem Label="Platform"> *@
+@*                <select @bind="...">...</select> *@
+@*            </FilterBarItem> *@
+@*        </FilterBar> *@
+
+<div class="card filter-bar" style="margin-bottom: 1rem;">
+    <div class="form-row">
+        @if (!string.IsNullOrEmpty(SearchPlaceholder))
+        {
+            <div class="form-group" style="flex: 2; min-width: 200px;">
+                <label>Search</label>
+                <input type="text" @bind="SearchValue" @bind:event="oninput" @bind:after="OnSearchChanged"
+                       placeholder="@SearchPlaceholder" aria-label="Search filter" />
+            </div>
+        }
+        @ChildContent
+    </div>
+    @if (SecondRow is not null)
+    {
+        <div class="form-row" style="margin-top: 0.5rem;">
+            @SecondRow
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string SearchPlaceholder { get; set; } = "Search...";
+    [Parameter] public string SearchValue { get; set; } = "";
+    [Parameter] public EventCallback<string> SearchValueChanged { get; set; }
+    [Parameter] public EventCallback OnFilterChanged { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? SecondRow { get; set; }
+
+    private async Task OnSearchChanged()
+    {
+        await SearchValueChanged.InvokeAsync(SearchValue);
+        await OnFilterChanged.InvokeAsync();
+    }
+}

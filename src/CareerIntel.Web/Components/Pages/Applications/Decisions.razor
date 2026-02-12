@@ -163,6 +163,13 @@
             </div>
         }
     }
+
+    @if (_decisions.Count > 0)
+    {
+        <NextStep Icon="☰" Title="Next: Track your applications"
+                  Description="Move decided vacancies into your application pipeline"
+                  Href="/applications" />
+    }
 }
 
 @code {
@@ -171,6 +178,7 @@
     private bool _loading = true;
     private string _search = "";
     private string _decisionFilter = "";
+    private HashSet<string> _userSkills = new(StringComparer.OrdinalIgnoreCase);
 
     private IEnumerable<JobVacancy> FilteredVacancies => _vacancies
         .Where(v => string.IsNullOrEmpty(_search)
@@ -186,6 +194,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Load user profile skills for accurate matching
+        await LoadUserSkills();
+
         try
         {
             // Load recent vacancies from the database
@@ -209,11 +220,36 @@
         _loading = false;
     }
 
+    private async Task LoadUserSkills()
+    {
+        var profilePath = Path.Combine(DataDir.Path, "my-profile.json");
+        if (!File.Exists(profilePath)) return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(profilePath);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("skills", out var skills) &&
+                skills.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var skill in skills.EnumerateArray())
+                {
+                    if (skill.TryGetProperty("skillName", out var sn))
+                    {
+                        var name = sn.GetString();
+                        if (!string.IsNullOrEmpty(name))
+                            _userSkills.Add(name);
+                    }
+                }
+            }
+        }
+        catch { /* profile malformed, use fallback */ }
+    }
+
     private async Task Decide(JobVacancy vacancy)
     {
-        // Placeholder decision logic: score based on required skills count and salary
-        var matchScore = CalculatePlaceholderMatch(vacancy);
-        var skillGaps = CalculatePlaceholderGaps(vacancy);
+        var matchScore = CalculateMatch(vacancy);
+        var skillGaps = CalculateGaps(vacancy);
         var learningHours = skillGaps.Sum(g => g.HoursToLearn);
 
         string verdict;
@@ -260,35 +296,49 @@
         await File.WriteAllTextAsync(decisionsPath, json);
     }
 
-    private static int CalculatePlaceholderMatch(JobVacancy vacancy)
+    private int CalculateMatch(JobVacancy vacancy)
     {
-        // Placeholder scoring heuristic based on available vacancy data
-        var score = 50; // Base
+        // Use actual user profile skills for matching
+        var score = 0;
 
-        if (vacancy.RequiredSkills.Count <= 5) score += 15;
-        else if (vacancy.RequiredSkills.Count <= 10) score += 5;
+        // Skill match (60% weight)
+        if (vacancy.RequiredSkills.Count > 0)
+        {
+            var matched = vacancy.RequiredSkills.Count(s => _userSkills.Contains(s));
+            score += (int)(60.0 * matched / vacancy.RequiredSkills.Count);
+        }
+        else
+        {
+            score += 30; // No skills listed = neutral
+        }
 
-        if (vacancy.RemotePolicy == RemotePolicy.FullyRemote) score += 10;
-        else if (vacancy.RemotePolicy == RemotePolicy.Hybrid) score += 5;
+        // Preferred skills bonus (10%)
+        if (vacancy.PreferredSkills.Count > 0)
+        {
+            var matched = vacancy.PreferredSkills.Count(s => _userSkills.Contains(s));
+            score += (int)(10.0 * matched / vacancy.PreferredSkills.Count);
+        }
 
-        if (vacancy.SalaryMax.HasValue && vacancy.SalaryMax >= 80000) score += 10;
+        // Remote policy (15%)
+        if (vacancy.RemotePolicy == RemotePolicy.FullyRemote) score += 15;
+        else if (vacancy.RemotePolicy == RemotePolicy.RemoteFriendly) score += 12;
+        else if (vacancy.RemotePolicy == RemotePolicy.Hybrid) score += 8;
+        else score += 3;
 
-        if (vacancy.PreferredSkills.Count > 0) score += 5;
+        // Salary alignment (15%)
+        if (vacancy.SalaryMax.HasValue && vacancy.SalaryMax >= 100000) score += 15;
+        else if (vacancy.SalaryMax.HasValue && vacancy.SalaryMax >= 60000) score += 10;
+        else if (vacancy.SalaryMin.HasValue) score += 5;
+        else score += 7; // No salary = neutral
 
         return Math.Clamp(score, 0, 100);
     }
 
-    private static List<SkillGapInfo> CalculatePlaceholderGaps(JobVacancy vacancy)
+    private List<SkillGapInfo> CalculateGaps(JobVacancy vacancy)
     {
-        // Placeholder: treat skills beyond common ones as gaps
-        var commonSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "C#", ".NET", "ASP.NET", "SQL", "Git", "REST", "API", "Docker",
-            "JavaScript", "TypeScript", "HTML", "CSS", "Linux", "Azure"
-        };
-
+        // Use actual user profile skills to identify real gaps
         return vacancy.RequiredSkills
-            .Where(s => !commonSkills.Contains(s))
+            .Where(s => !_userSkills.Contains(s))
             .Select(s => new SkillGapInfo
             {
                 SkillName = s,

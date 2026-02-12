@@ -1,0 +1,194 @@
+@page "/career/outreach"
+
+<div class="page-header">
+    <h1 class="page-title">Contractor Outreach</h1>
+    <p class="page-subtitle">Cold outreach templates and positioning strategies for B2B/freelance contracts</p>
+</div>
+
+@* --- Positioning Guide --- *@
+<h2 class="section-title">Positioning Guide</h2>
+<div class="card">
+    <h3 class="card-title">How to Position Yourself</h3>
+    <div class="card-grid">
+        <StatCard Label="Solution Architect"
+                  Value="Best for $100K+ rates"
+                  Sub="Premium positioning for enterprise clients"
+                  CssClass="text-green" />
+        <StatCard Label="Senior .NET Contractor"
+                  Value="Standard positioning"
+                  Sub="Widely understood, broad market appeal"
+                  CssClass="text-cyan" />
+        <StatCard Label="Tech Lead / Staff Engineer"
+                  Value="Leadership premium"
+                  Sub="Higher rates for team-oriented engagements"
+                  CssClass="text-blue" />
+    </div>
+</div>
+
+@* --- LinkedIn Search Queries --- *@
+<h2 class="section-title">LinkedIn Search Queries</h2>
+<div class="card">
+    <h3 class="card-title">Pre-Made Search Queries</h3>
+    <p class="text-muted" style="margin-bottom: 1rem;">Copy and paste these into LinkedIn search to find relevant opportunities</p>
+    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+        @foreach (var query in _searchQueries)
+        {
+            <div style="display: flex; align-items: center; gap: 0.75rem; background: var(--bg-secondary); padding: 0.6rem 1rem; border-radius: 6px; border: 1px solid var(--border);">
+                <code style="flex: 1; font-size: 13px; color: var(--cyan);">@query</code>
+                <button class="btn btn-sm" @onclick="() => CopyToClipboard(query)"
+                        style="flex-shrink: 0;">
+                    @(_copiedQuery == query ? "Copied!" : "Copy")
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@* --- Outreach Templates --- *@
+<h2 class="section-title">Outreach Templates</h2>
+
+<div class="card">
+    <h3 class="card-title">LinkedIn Connection Request</h3>
+    <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 6px; border: 1px solid var(--border); white-space: pre-wrap; font-size: 13px; line-height: 1.6;">Hi [Name], I noticed [Company] is working on [specific tech/project]. I'm a B2B .NET contractor with 12+ years of experience in microservices, Azure, and high-load systems. I work as an independent contractor and can invoice internationally. Would love to discuss how I can help. Best, [Your Name]</div>
+    <div style="margin-top: 0.75rem;">
+        <StatusBadge Text="300 char limit" Color="yellow" />
+        <span class="text-muted" style="margin-left: 0.5rem; font-size: 12px;">Keep it concise and personalized</span>
+    </div>
+</div>
+
+<div class="card">
+    <h3 class="card-title">Response to Recruiter</h3>
+    <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 6px; border: 1px solid var(--border); white-space: pre-wrap; font-size: 13px; line-height: 1.6;">Thank you for reaching out! I'm currently available as a B2B contractor and can invoice internationally (EU VAT / FOP). My rate is $[X]/hour for long-term engagements. I specialize in .NET 8, microservices architecture, Azure/AWS, and have experience leading distributed teams. Happy to discuss the opportunity further.</div>
+    <div style="margin-top: 0.75rem;">
+        <StatusBadge Text="Recruiter reply" Color="cyan" />
+        <span class="text-muted" style="margin-left: 0.5rem; font-size: 12px;">Sets rate expectations early</span>
+    </div>
+</div>
+
+<div class="card">
+    <h3 class="card-title">Cold Email to Company</h3>
+    <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 6px; border: 1px solid var(--border); white-space: pre-wrap; font-size: 13px; line-height: 1.6;">Subject: Senior .NET Contractor — Available for B2B engagement
+
+Hi [Hiring Manager],
+
+I came across [Company] while researching companies in [fintech/SaaS/etc.]. I'm a senior .NET contractor based in Europe with 12+ years of experience.
+
+Key highlights:
+- .NET 8, ASP.NET Core, microservices architecture
+- Azure AKS, Docker, Kubernetes, CI/CD pipelines
+- Led teams of 5-8 engineers, architected systems handling millions of requests
+- Available as B2B contractor, can invoice internationally
+
+I'd welcome the opportunity to discuss how I can contribute to your engineering efforts.
+
+Best regards,
+[Your Name]</div>
+    <div style="margin-top: 0.75rem;">
+        <StatusBadge Text="Cold email" Color="blue" />
+        <span class="text-muted" style="margin-left: 0.5rem; font-size: 12px;">Direct to hiring managers or engineering leads</span>
+    </div>
+</div>
+
+@* --- Key Phrases --- *@
+<h2 class="section-title">Key Phrases</h2>
+<div class="card">
+    <h3 class="card-title">Important Phrases to Use in Outreach</h3>
+    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        @foreach (var phrase in _keyPhrases)
+        {
+            <div class="stat-card">
+                <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                    <StatusBadge Text="@phrase.Label" Color="@phrase.Color" />
+                    <div>
+                        <strong class="text-cyan">@phrase.Phrase</strong>
+                        <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 13px;">@phrase.Explanation</p>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@* --- Target Niches --- *@
+<h2 class="section-title">Target Niches</h2>
+<div class="card-grid">
+    <div class="card">
+        <h3 class="card-title">Fintech</h3>
+        <div class="stat-value text-green" style="font-size: 20px; margin-bottom: 0.5rem;">$400-700/day EU</div>
+        <div class="stat-value text-cyan" style="font-size: 20px; margin-bottom: 0.75rem;">$70-120/hr US</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+            <span class="badge badge-green">Payment Systems</span>
+            <span class="badge badge-green">Banking APIs</span>
+            <span class="badge badge-green">Compliance</span>
+        </div>
+    </div>
+    <div class="card">
+        <h3 class="card-title">Trading / HFT</h3>
+        <div class="stat-value text-green" style="font-size: 20px; margin-bottom: 0.75rem;">Premium rates</div>
+        <p class="text-muted" style="margin-bottom: 0.75rem;">Needs low-latency C# experience</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+            <span class="badge badge-cyan">Low-Latency</span>
+            <span class="badge badge-cyan">Market Data</span>
+            <span class="badge badge-cyan">FIX Protocol</span>
+        </div>
+    </div>
+    <div class="card">
+        <h3 class="card-title">SaaS Infrastructure</h3>
+        <div class="stat-value text-cyan" style="font-size: 20px; margin-bottom: 0.75rem;">Stable contracts</div>
+        <p class="text-muted" style="margin-bottom: 0.75rem;">Product companies, long-term engagements</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+            <span class="badge badge-blue">Multi-Tenant</span>
+            <span class="badge badge-blue">APIs</span>
+            <span class="badge badge-blue">Microservices</span>
+        </div>
+    </div>
+    <div class="card">
+        <h3 class="card-title">AI / LLM Platforms</h3>
+        <div class="stat-value text-green" style="font-size: 20px; margin-bottom: 0.75rem;">Hot market</div>
+        <p class="text-muted" style="margin-bottom: 0.75rem;">.NET + Python integration, rapidly growing</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+            <span class="badge badge-yellow">LLM Integration</span>
+            <span class="badge badge-yellow">ML Pipelines</span>
+            <span class="badge badge-yellow">Semantic Kernel</span>
+        </div>
+    </div>
+</div>
+
+@* --- Navigation --- *@
+<div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+    <a href="/career/roadmap" class="btn btn-primary">Career Roadmap</a>
+    <a href="/jobs" class="btn">Job Browser</a>
+    <a href="/resume" class="btn">Resume Builder</a>
+</div>
+
+@code {
+    private string? _copiedQuery;
+
+    private readonly string[] _searchQueries =
+    [
+        "Senior .NET Contractor remote",
+        "C# Backend Contract B2B",
+        "Freelance .NET Engineer Europe",
+        ".NET Developer remote worldwide contractor",
+        "Solution Architect .NET B2B remote"
+    ];
+
+    private readonly KeyPhrase[] _keyPhrases =
+    [
+        new("Use", "B2B contractor", "Not \"freelancer\" — signals professionalism for EU roles", "green"),
+        new("Use", "Can invoice internationally", "Shows you handle the paperwork and billing", "green"),
+        new("Use", "EU VAT registered / FOP", "Tax compliance signal — removes a hiring concern", "cyan"),
+        new("Use", "Direct contract", "Not through an intermediary — higher margins for both sides", "blue"),
+        new("Use", "Available for long-term engagement", "Companies prefer stability over short gigs", "blue")
+    ];
+
+    private async Task CopyToClipboard(string text)
+    {
+        _copiedQuery = text;
+        StateHasChanged();
+        await Task.Delay(1500);
+        _copiedQuery = null;
+    }
+
+    private sealed record KeyPhrase(string Label, string Phrase, string Explanation, string Color);
+}

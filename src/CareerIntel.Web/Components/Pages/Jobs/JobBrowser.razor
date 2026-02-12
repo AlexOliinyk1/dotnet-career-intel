@@ -1,23 +1,31 @@
 @page "/jobs"
 @inject VacancyRepository VacancyRepo
 @inject IEnumerable<IJobScraper> Scrapers
+@inject CareerIntel.Web.Services.ScraperHealthService ScraperHealth
+@inject CareerIntel.Web.Services.ToastService Toast
 @using CareerIntel.Core.Interfaces
 
 <div class="page-header">
-    <h1 class="page-title">Job Browser</h1>
-    <p class="page-subtitle">Browse and filter scraped vacancies across all platforms</p>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h1 class="page-title">Job Browser</h1>
+            <p class="page-subtitle">Browse and filter scraped vacancies across all platforms</p>
+        </div>
+        <ExportButton Label="Export CSV" FileName="@($"jobs-{DateTime.Now:yyyy-MM-dd}.csv")"
+                      GetCsvContent="@(() => CsvExportService.ExportVacancies(_pageVacancies))" />
+    </div>
 </div>
 
 <div class="card" style="margin-bottom: 1rem;">
     <div class="form-row">
         <div class="form-group">
             <label>Search</label>
-            <input type="text" @bind="_searchText" @bind:event="oninput"
+            <input type="text" @bind="_searchText" @bind:event="oninput" @bind:after="ApplyFilters"
                    placeholder="Search titles, companies..." />
         </div>
         <div class="form-group">
             <label>Platform</label>
-            <select @bind="_selectedPlatform">
+            <select @bind="_selectedPlatform" @bind:after="ApplyFilters">
                 <option value="">All Platforms</option>
                 @foreach (var p in _platforms)
                 {
@@ -27,7 +35,7 @@
         </div>
         <div class="form-group">
             <label>Remote Policy</label>
-            <select @bind="_selectedRemote">
+            <select @bind="_selectedRemote" @bind:after="ApplyFilters">
                 <option value="">Any</option>
                 @foreach (var r in Enum.GetValues<RemotePolicy>())
                 {
@@ -37,12 +45,65 @@
         </div>
         <div class="form-group">
             <label>Seniority</label>
-            <select @bind="_selectedSeniority">
+            <select @bind="_selectedSeniority" @bind:after="ApplyFilters">
                 <option value="">Any</option>
                 @foreach (var s in Enum.GetValues<SeniorityLevel>())
                 {
                     <option value="@s">@s</option>
                 }
+            </select>
+        </div>
+    </div>
+    <div class="form-row" style="margin-top: 0.5rem;">
+        <div class="form-group">
+            <label>Engagement</label>
+            <select @bind="_selectedEngagement" @bind:after="ApplyFilters">
+                <option value="">Any</option>
+                <option value="ContractB2B">Contract / B2B</option>
+                <option value="Freelance">Freelance</option>
+                <option value="Employment">Employment</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Geo Restrictions</label>
+            <select @bind="_geoFilterMode" @bind:after="ApplyFilters">
+                <option value="all">Show All</option>
+                <option value="no-restrictions">No Restrictions Only</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Min Salary (USD)</label>
+            <select @bind="_selectedMinSalary" @bind:after="ApplyFilters">
+                <option value="0">Any</option>
+                <option value="50000">$50K+</option>
+                <option value="80000">$80K+</option>
+                <option value="100000">$100K+</option>
+                <option value="120000">$120K+</option>
+                <option value="150000">$150K+</option>
+                <option value="180000">$180K+</option>
+                <option value="200000">$200K+</option>
+                <option value="250000">$250K+</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Max Salary (USD)</label>
+            <select @bind="_selectedMaxSalary" @bind:after="ApplyFilters">
+                <option value="0">Any</option>
+                <option value="100000">Up to $100K</option>
+                <option value="150000">Up to $150K</option>
+                <option value="200000">Up to $200K</option>
+                <option value="250000">Up to $250K</option>
+                <option value="350000">Up to $350K</option>
+                <option value="500000">Up to $500K</option>
+            </select>
+        </div>
+    </div>
+    <div class="form-row" style="margin-top: 0.5rem;">
+        <div class="form-group">
+            <label>Salary Data</label>
+            <select @bind="_salaryFilterMode" @bind:after="ApplyFilters">
+                <option value="all">Show All</option>
+                <option value="with-salary">With Salary Only</option>
             </select>
         </div>
         <div class="form-group" style="align-self: flex-end;">
@@ -55,68 +116,115 @@
 
 @if (_scanning)
 {
-    <LoadingSpinner Loading="true" Message="@_scanStatus" />
+    <div class="card" style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <span>@_scanStatus</span>
+            <button class="btn btn-danger" @onclick="CancelScan">Cancel</button>
+        </div>
+        <div class="progress-bar" style="height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden;">
+            <div style="width: @(_scanProgress)%; height: 100%; background: var(--accent); transition: width 0.3s;"></div>
+        </div>
+        @if (_scanErrors.Count > 0)
+        {
+            <div style="margin-top: 0.75rem;">
+                <span class="text-muted" style="font-size: 12px;">
+                    @_scanSucceeded succeeded, @_scanErrors.Count failed
+                </span>
+            </div>
+        }
+    </div>
 }
 
 <LoadingSpinner Loading="@_loading" Message="Loading vacancies..." />
 
 @if (!_loading)
 {
+    <div class="card-grid" style="margin-bottom: 1rem;">
+        <StatCard Label="Total Jobs" Value="@_totalJobsText" Sub="all platforms" />
+        <StatCard Label="With Salary" Value="@_withSalaryText" Sub="have salary data" />
+        <StatCard Label="$150K+ Jobs" Value="@_highSalaryText"
+                  Sub="high-salary positions" CssClass="text-cyan" />
+        <StatCard Label="Remote Jobs" Value="@_remoteJobsText" Sub="fully remote" />
+    </div>
+
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <span class="text-muted">
-                Showing @FilteredVacancies.Count of @_allVacancies.Count vacancies
+                Showing @_pageVacancies.Count of @_totalCount vacancies
                 (page @(_currentPage + 1) of @TotalPages)
             </span>
         </div>
 
+        <div class="table-scroll">
         <table class="data-table">
             <thead>
                 <tr>
                     <th>Title</th>
                     <th>Company</th>
+                    <th>Type</th>
                     <th>Remote</th>
-                    <th>Seniority</th>
                     <th>Salary</th>
+                    <th>Geo</th>
                     <th>Platform</th>
                     <th>Posted</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var v in PagedVacancies)
+                @foreach (var v in _pageVacancies)
                 {
                     <tr @onclick="() => NavigateToDetail(v.Id)" style="cursor: pointer;">
-                        <td class="truncate" style="max-width: 280px;">@v.Title</td>
+                        <td class="truncate" style="max-width: 240px;">@v.Title</td>
                         <td>@v.Company</td>
+                        <td>
+                            @if (v.EngagementType != EngagementType.Unknown)
+                            {
+                                <StatusBadge Text="@FormatEngagement(v.EngagementType)"
+                                             Color="@GetEngagementColor(v.EngagementType)" />
+                            }
+                        </td>
                         <td>
                             <StatusBadge Text="@v.RemotePolicy.ToString()"
                                          Color="@StatusBadge.GetColorForStatus(v.RemotePolicy.ToString())" />
                         </td>
-                        <td>@v.SeniorityLevel</td>
                         <td class="text-cyan">@FormatSalary(v)</td>
+                        <td>
+                            @if (v.GeoRestrictions.Count > 0)
+                            {
+                                <span class="badge badge-yellow" title="@string.Join(", ", v.GeoRestrictions)">@v.GeoRestrictions[0]</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-green">Open</span>
+                            }
+                        </td>
                         <td><span class="badge">@v.SourcePlatform</span></td>
                         <td class="text-muted">@v.PostedDate.ToString("MMM dd")</td>
                     </tr>
                 }
             </tbody>
         </table>
+        </div>
 
-        @if (TotalPages > 1)
-        {
-            <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
-                <button class="btn" disabled="@(_currentPage == 0)" @onclick="PreviousPage">Previous</button>
-                @for (var i = PaginationStart; i <= PaginationEnd; i++)
-                {
-                    var pageIndex = i;
-                    <button class="btn @(pageIndex == _currentPage ? "btn-primary" : "")"
-                            @onclick="() => GoToPage(pageIndex)">
-                        @(pageIndex + 1)
-                    </button>
-                }
-                <button class="btn" disabled="@(_currentPage >= TotalPages - 1)" @onclick="NextPage">Next</button>
-            </div>
-        }
+        <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+            <button class="btn" disabled="@(_currentPage == 0)" @onclick="PreviousPage">Previous</button>
+            @for (var i = PaginationStart; i <= PaginationEnd; i++)
+            {
+                var pageIndex = i;
+                <button class="btn @(pageIndex == _currentPage ? "btn-primary" : "")"
+                        @onclick="() => GoToPage(pageIndex)">
+                    @(pageIndex + 1)
+                </button>
+            }
+            <button class="btn" disabled="@(_currentPage >= TotalPages - 1)" @onclick="NextPage">Next</button>
+        </div>
     </div>
+
+    @if (_pageVacancies.Count > 0)
+    {
+        <NextStep Icon="✓" Title="Next: Evaluate matches"
+                  Description="Run GO/NO-GO decisions on your top vacancy matches"
+                  Href="/applications/decisions" />
+    }
 }
 
 @code {
@@ -127,8 +235,11 @@
     private bool _loading = true;
     private bool _scanning;
     private string _scanStatus = "Starting scan...";
+    private int _scanProgress;
+    private int _scanSucceeded;
+    private List<string> _scanErrors = [];
+    private CancellationTokenSource? _scanCts;
 
-    private List<JobVacancy> _allVacancies = [];
     private List<string> _platforms = [];
     private int _currentPage;
 
@@ -137,104 +248,166 @@
     private string _selectedPlatform = "";
     private string _selectedRemote = "";
     private string _selectedSeniority = "";
+    private string _selectedEngagement = "";
+    private string _geoFilterMode = "all";
+    private int _selectedMinSalary;
+    private int _selectedMaxSalary;
+    private string _salaryFilterMode = "all";
 
-    private List<JobVacancy> FilteredVacancies
-    {
-        get
-        {
-            var query = _allVacancies.AsEnumerable();
+    // Stat card values
+    private string _totalJobsText = "0";
+    private string _withSalaryText = "0";
+    private string _highSalaryText = "0";
+    private string _remoteJobsText = "0";
 
-            if (!string.IsNullOrWhiteSpace(_searchText))
-            {
-                var search = _searchText.Trim();
-                query = query.Where(v =>
-                    v.Title.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                    v.Company.Contains(search, StringComparison.OrdinalIgnoreCase));
-            }
+    private int _totalCount;
+    private List<JobVacancy> _pageVacancies = [];
 
-            if (!string.IsNullOrEmpty(_selectedPlatform))
-                query = query.Where(v => v.SourcePlatform == _selectedPlatform);
-
-            if (!string.IsNullOrEmpty(_selectedRemote) && Enum.TryParse<RemotePolicy>(_selectedRemote, out var remote))
-                query = query.Where(v => v.RemotePolicy == remote);
-
-            if (!string.IsNullOrEmpty(_selectedSeniority) && Enum.TryParse<SeniorityLevel>(_selectedSeniority, out var seniority))
-                query = query.Where(v => v.SeniorityLevel == seniority);
-
-            return query.ToList();
-        }
-    }
-
-    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredVacancies.Count / PageSize));
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)_totalCount / PageSize));
 
     private int PaginationStart => Math.Max(0, _currentPage - 3);
     private int PaginationEnd => Math.Min(TotalPages - 1, _currentPage + 3);
 
-    private List<JobVacancy> PagedVacancies => FilteredVacancies
-        .Skip(_currentPage * PageSize)
-        .Take(PageSize)
-        .ToList();
-
     protected override async Task OnInitializedAsync()
     {
-        _allVacancies = await VacancyRepo.GetVacanciesAsync();
-
-        _platforms = _allVacancies
-            .Select(v => v.SourcePlatform)
-            .Distinct()
-            .OrderBy(p => p)
-            .ToList();
-
+        _platforms = await VacancyRepo.GetPlatformsAsync();
+        await LoadPageAsync();
         _loading = false;
+    }
+
+    private async Task LoadPageAsync()
+    {
+        SeniorityLevel? seniority = !string.IsNullOrEmpty(_selectedSeniority) && Enum.TryParse<SeniorityLevel>(_selectedSeniority, out var s) ? s : null;
+        EngagementType? engagement = !string.IsNullOrEmpty(_selectedEngagement) && Enum.TryParse<EngagementType>(_selectedEngagement, out var e) ? e : null;
+
+        var (items, totalCount) = await VacancyRepo.GetVacanciesPagedAsync(
+            _currentPage * PageSize,
+            PageSize,
+            string.IsNullOrEmpty(_selectedPlatform) ? null : _selectedPlatform,
+            seniority,
+            searchText: string.IsNullOrWhiteSpace(_searchText) ? null : _searchText.Trim(),
+            engagementType: engagement,
+            excludeGeoRestricted: _geoFilterMode == "no-restrictions");
+
+        // Apply client-side filters that aren't in the server query
+        var query = items.AsEnumerable();
+
+        if (!string.IsNullOrEmpty(_selectedRemote) && Enum.TryParse<RemotePolicy>(_selectedRemote, out var remote))
+            query = query.Where(v => v.RemotePolicy == remote);
+
+        if (_salaryFilterMode == "with-salary")
+            query = query.Where(v => v.SalaryMin.HasValue);
+
+        if (_selectedMinSalary > 0)
+            query = query.Where(v => v.SalaryMin.HasValue &&
+                (v.SalaryMax ?? v.SalaryMin!.Value) >= _selectedMinSalary);
+
+        if (_selectedMaxSalary > 0)
+            query = query.Where(v => v.SalaryMin.HasValue &&
+                v.SalaryMin.Value <= _selectedMaxSalary);
+
+        _pageVacancies = query.ToList();
+        _totalCount = totalCount;
+
+        UpdateStatCards();
+    }
+
+    private async Task ApplyFilters()
+    {
+        _currentPage = 0;
+        await LoadPageAsync();
+    }
+
+    private void UpdateStatCards()
+    {
+        _totalJobsText = _totalCount.ToString("N0");
+        _withSalaryText = _pageVacancies.Count(v => v.SalaryMin.HasValue).ToString("N0");
+        _highSalaryText = _pageVacancies.Count(v => v.SalaryMin.HasValue && (v.SalaryMax ?? v.SalaryMin!.Value) >= 150000).ToString("N0");
+        _remoteJobsText = _pageVacancies.Count(v => v.RemotePolicy == RemotePolicy.FullyRemote).ToString("N0");
     }
 
     private async Task ScanNow()
     {
         _scanning = true;
+        _scanProgress = 0;
+        _scanSucceeded = 0;
+        _scanErrors = [];
+        _scanCts = new CancellationTokenSource();
+
         var scraperList = Scrapers.ToList();
         var totalNew = 0;
 
         for (var i = 0; i < scraperList.Count; i++)
         {
+            if (_scanCts.IsCancellationRequested)
+                break;
+
             var scraper = scraperList[i];
             _scanStatus = $"Scanning {scraper.PlatformName} ({i + 1}/{scraperList.Count})...";
-            StateHasChanged();
+            _scanProgress = (int)((double)(i) / scraperList.Count * 100);
+            await InvokeAsync(StateHasChanged);
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                var results = await scraper.ScrapeAsync();
+                // 30-second timeout per scraper
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(_scanCts.Token);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+                var results = await scraper.ScrapeAsync(cancellationToken: timeoutCts.Token);
+                sw.Stop();
                 if (results.Count > 0)
                 {
                     await VacancyRepo.SaveVacanciesAsync(results);
                     totalNew += results.Count;
                 }
+                _scanSucceeded++;
+                ScraperHealth.RecordSuccess(scraper.PlatformName, results.Count, sw.Elapsed);
             }
-            catch
+            catch (OperationCanceledException) when (_scanCts.IsCancellationRequested)
             {
-                // Skip failed scrapers silently
+                break; // User cancelled
+            }
+            catch (OperationCanceledException)
+            {
+                sw.Stop();
+                _scanErrors.Add($"{scraper.PlatformName}: timeout");
+                ScraperHealth.RecordTimeout(scraper.PlatformName);
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                _scanErrors.Add($"{scraper.PlatformName}: {ex.Message.Split('\n')[0]}");
+                ScraperHealth.RecordFailure(scraper.PlatformName, ex.Message.Split('\n')[0], sw.Elapsed);
             }
         }
 
-        _scanStatus = $"Scan complete. {totalNew} vacancies collected.";
-        StateHasChanged();
+        _scanProgress = 100;
+        _scanStatus = _scanCts.IsCancellationRequested
+            ? $"Scan cancelled. {totalNew} vacancies collected from {_scanSucceeded} scrapers."
+            : $"Scan complete. {totalNew} vacancies from {_scanSucceeded}/{scraperList.Count} scrapers.";
+        await InvokeAsync(StateHasChanged);
 
         // Reload data
-        _allVacancies = await VacancyRepo.GetVacanciesAsync();
-        _platforms = _allVacancies
-            .Select(v => v.SourcePlatform)
-            .Distinct()
-            .OrderBy(p => p)
-            .ToList();
-
+        _platforms = await VacancyRepo.GetPlatformsAsync();
         _currentPage = 0;
+        await LoadPageAsync();
         _scanning = false;
+        Toast.Success($"Scan complete. {totalNew} new vacancies from {_scanSucceeded} scrapers.");
+        _scanCts.Dispose();
+        _scanCts = null;
+    }
+
+    private void CancelScan()
+    {
+        _scanCts?.Cancel();
     }
 
     private void NavigateToDetail(string id) => Navigation.NavigateTo($"/jobs/{id}");
 
-    private void GoToPage(int page) => _currentPage = page;
-    private void PreviousPage() { if (_currentPage > 0) _currentPage--; }
-    private void NextPage() { if (_currentPage < TotalPages - 1) _currentPage++; }
+    private async Task GoToPage(int page) { _currentPage = page; await LoadPageAsync(); }
+    private async Task PreviousPage() { if (_currentPage > 0) { _currentPage--; await LoadPageAsync(); } }
+    private async Task NextPage() { if (_currentPage < TotalPages - 1) { _currentPage++; await LoadPageAsync(); } }
 
     private static string FormatSalary(JobVacancy v)
     {
@@ -243,10 +416,29 @@
 
         var min = v.SalaryMin.Value.ToString("N0");
         var currency = v.SalaryCurrency;
+        var suffix = v.IsHourlyRate ? "/hr" : "";
 
         if (v.SalaryMax.HasValue)
-            return $"{currency} {min} - {v.SalaryMax.Value:N0}";
+            return $"{currency} {min} - {v.SalaryMax.Value:N0}{suffix}";
 
-        return $"{currency} {min}+";
+        return $"{currency} {min}+{suffix}";
     }
+
+    private static string FormatEngagement(EngagementType type) => type switch
+    {
+        EngagementType.ContractB2B => "B2B",
+        EngagementType.Freelance => "Freelance",
+        EngagementType.Employment => "FTE",
+        EngagementType.InsideIR35 => "IR35",
+        _ => ""
+    };
+
+    private static string GetEngagementColor(EngagementType type) => type switch
+    {
+        EngagementType.ContractB2B => "cyan",
+        EngagementType.Freelance => "green",
+        EngagementType.Employment => "blue",
+        EngagementType.InsideIR35 => "yellow",
+        _ => "gray"
+    };
 }

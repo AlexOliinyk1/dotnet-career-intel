@@ -1,0 +1,26 @@
+@using Microsoft.AspNetCore.Components.Routing
+
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <ol>
+        <li><a href="/">Dashboard</a></li>
+        @foreach (var crumb in Crumbs)
+        {
+            <li>
+                @if (!string.IsNullOrEmpty(crumb.Href))
+                {
+                    <a href="@crumb.Href">@crumb.Label</a>
+                }
+                else
+                {
+                    <span aria-current="page">@crumb.Label</span>
+                }
+            </li>
+        }
+    </ol>
+</nav>
+
+@code {
+    [Parameter] public IReadOnlyList<BreadcrumbItem> Crumbs { get; set; } = [];
+
+    public sealed record BreadcrumbItem(string Label, string? Href = null);
+}

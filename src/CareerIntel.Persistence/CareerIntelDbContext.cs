@@ -24,10 +24,32 @@ public sealed class CareerIntelDbContext(DbContextOptions<CareerIntelDbContext> 
     public DbSet<NegotiationState> NegotiationStates => Set<NegotiationState>();
     public DbSet<PortfolioProject> PortfolioProjects => Set<PortfolioProject>();
     public DbSet<VacancyChange> VacancyChanges => Set<VacancyChange>();
+    public DbSet<JobApplication> Applications => Set<JobApplication>();
+    public DbSet<LinkedInProposal> Proposals => Set<LinkedInProposal>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // Store all DateTimeOffset properties as Unix milliseconds (long) for correct SQL ORDER BY in SQLite
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                if (property.ClrType == typeof(DateTimeOffset))
+                {
+                    property.SetValueConverter(new ValueConverter<DateTimeOffset, long>(
+                        v => v.ToUnixTimeMilliseconds(),
+                        v => DateTimeOffset.FromUnixTimeMilliseconds(v)));
+                }
+                else if (property.ClrType == typeof(DateTimeOffset?))
+                {
+                    property.SetValueConverter(new ValueConverter<DateTimeOffset?, long?>(
+                        v => v.HasValue ? v.Value.ToUnixTimeMilliseconds() : null,
+                        v => v.HasValue ? DateTimeOffset.FromUnixTimeMilliseconds(v.Value) : null));
+                }
+            }
+        }
 
         ConfigureJobVacancy(modelBuilder);
         ConfigureInterviewFeedback(modelBuilder);
@@ -35,6 +57,8 @@ public sealed class CareerIntelDbContext(DbContextOptions<CareerIntelDbContext> 
         ConfigureNegotiationState(modelBuilder);
         ConfigurePortfolioProject(modelBuilder);
         ConfigureVacancyChange(modelBuilder);
+        ConfigureJobApplication(modelBuilder);
+        ConfigureLinkedInProposal(modelBuilder);
     }
 
     private static void ConfigureJobVacancy(ModelBuilder modelBuilder)
@@ -163,6 +187,35 @@ public sealed class CareerIntelDbContext(DbContextOptions<CareerIntelDbContext> 
         entity.Property(c => c.Id).ValueGeneratedOnAdd();
         entity.HasIndex(c => c.VacancyId);
         entity.HasIndex(c => c.DetectedDate);
+    }
+
+    private static void ConfigureJobApplication(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<JobApplication>();
+
+        entity.HasKey(a => a.Id);
+        entity.Property(a => a.Id).ValueGeneratedOnAdd();
+        entity.HasIndex(a => a.Status);
+        entity.HasIndex(a => a.Company);
+        entity.HasIndex(a => a.CreatedDate);
+
+        entity.Property(a => a.Status)
+            .HasConversion<string>();
+    }
+
+    private static void ConfigureLinkedInProposal(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<LinkedInProposal>();
+
+        entity.HasKey(p => p.Id);
+        entity.Property(p => p.Id).ValueGeneratedOnAdd();
+        entity.HasIndex(p => p.Status);
+        entity.HasIndex(p => p.Company);
+        entity.HasIndex(p => p.ProposalDate);
+        entity.HasIndex(p => p.ConversationId);
+
+        entity.Property(p => p.Status)
+            .HasConversion<string>();
     }
 
     /// <summary>

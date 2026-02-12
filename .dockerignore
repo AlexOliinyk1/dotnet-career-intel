@@ -1,0 +1,10 @@
+**/.git
+**/.vs
+**/bin
+**/obj
+**/node_modules
+**/.idea
+**/data
+**/*.user
+**/*.suo
+**/nul

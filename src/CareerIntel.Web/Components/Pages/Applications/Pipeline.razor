@@ -1,16 +1,29 @@
 @page "/applications"
-@inject DataDirectoryConfig DataDir
+@inject ApplicationRepository AppRepo
 @rendermode InteractiveServer
 
 <div class="page-header">
-    <h1 class="page-title">Application Pipeline</h1>
-    <p>Track applications through every stage</p>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h1 class="page-title">Application Pipeline</h1>
+            <p>Track applications through every stage</p>
+        </div>
+        <ExportButton Label="Export CSV" FileName="@($"applications-{DateTime.Now:yyyy-MM-dd}.csv")"
+                      GetCsvContent="@(() => CsvExportService.ExportApplications(_applications))" />
+    </div>
 </div>
 
 <LoadingSpinner Loading="_loading" Message="Loading applications..." />
 
 @if (!_loading)
 {
+    <div class="card-grid" style="margin-bottom: 1.5rem;">
+        <StatCard Label="Total" Value="@_applications.Count.ToString()" />
+        <StatCard Label="Active" Value="@ActiveCount.ToString()" CssClass="highlight-blue" />
+        <StatCard Label="Interviews" Value="@StageCount(ApplicationStatus.Interview).ToString()" CssClass="highlight-cyan" />
+        <StatCard Label="Offers" Value="@StageCount(ApplicationStatus.Offer).ToString()" CssClass="highlight-green" />
+    </div>
+
     @if (_applications.Count == 0)
     {
         <div class="card">
@@ -22,14 +35,6 @@
     }
     else
     {
-        @* Summary Stats *@
-        <div class="card-grid" style="margin-bottom: 1.5rem;">
-            <StatCard Label="Total" Value="@_applications.Count.ToString()" />
-            <StatCard Label="Active" Value="@ActiveCount.ToString()" CssClass="highlight-blue" />
-            <StatCard Label="Interviews" Value="@StageCount(ApplicationStatus.Interview).ToString()" CssClass="highlight-cyan" />
-            <StatCard Label="Offers" Value="@StageCount(ApplicationStatus.Offer).ToString()" CssClass="highlight-green" />
-        </div>
-
         @* Kanban Board *@
         <div style="display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 1rem;">
             @foreach (var stage in _stages)
@@ -183,15 +188,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var filePath = Path.Combine(DataDir.Path, "applications.json");
-
-        if (File.Exists(filePath))
-        {
-            var json = await File.ReadAllTextAsync(filePath);
-            _applications = JsonSerializer.Deserialize<List<JobApplication>>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-        }
-
+        _applications = await AppRepo.GetAllAsync();
         _loading = false;
     }
 }

@@ -1,0 +1,335 @@
+@page "/linkedin/connections"
+@inject DataDirectoryConfig DataDir
+@rendermode InteractiveServer
+
+<div class="page-header">
+    <h1 class="page-title">Connection Targeting</h1>
+    <p class="page-subtitle">Strategic HR/recruiter connections at highest-paying companies</p>
+</div>
+
+@* Import Section *@
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="form-row">
+        <div class="form-group" style="flex: 2;">
+            <label>LinkedIn export folder path</label>
+            <input type="text" @bind="_exportPath" placeholder="E:\chrome downloads\Basic_LinkedInDataExport..." />
+        </div>
+        <div class="form-group" style="align-self: flex-end;">
+            <button class="btn btn-primary" @onclick="AnalyzeConnections" disabled="@_analyzing">
+                @(_analyzing ? "Analyzing..." : "Analyze Network")
+            </button>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <p class="@(_statusSuccess ? "text-green" : "text-red")" style="margin-top: 0.5rem;">@_statusMessage</p>
+    }
+</div>
+
+<LoadingSpinner Loading="_loading" Message="Analyzing connections..." />
+
+@if (!_loading && _connections.Count > 0)
+{
+    @* Stats *@
+    <div class="card-grid" style="margin-bottom: 1.5rem;">
+        <StatCard Label="Total Connections" Value="@_totalConnections" />
+        <StatCard Label="Recruiters" Value="@_recruiterCount" CssClass="text-cyan" />
+        <StatCard Label="Recruiter %" Value="@_recruiterPct" />
+        <StatCard Label="Target Companies" Value="@_targets.Count.ToString()" CssClass="highlight-green" />
+    </div>
+
+    @* Recruiter Connections by Company *@
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <h3 class="card-title">Top Recruiter Companies</h3>
+        <p class="text-muted" style="margin-bottom: 0.75rem;">Companies where you have the most recruiter connections</p>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Recruiters</th>
+                    <th>Total Connections</th>
+                    <th>Recent Connection</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var group in _topRecruiterCompanies)
+                {
+                    <tr>
+                        <td style="font-weight: 500;">@group.Company</td>
+                        <td class="text-cyan">@group.RecruiterCount</td>
+                        <td>@group.TotalCount</td>
+                        <td class="text-muted">@(group.LatestDate?.ToString("MMM dd, yyyy") ?? "-")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* Connection Targets *@
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <h3 class="card-title">Priority Connection Targets</h3>
+        <p class="text-muted" style="margin-bottom: 0.75rem;">Companies to target for HR/recruiter connections based on salary data and market position</p>
+
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+            <div class="form-group" style="min-width: 200px;">
+                <label>Filter</label>
+                <select @bind="_targetFilter">
+                    <option value="">All targets</option>
+                    <option value="no-recruiter">No recruiter connection</option>
+                    <option value="has-proposal">Has proposal</option>
+                    <option value="high-priority">High priority (75+)</option>
+                </select>
+            </div>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Priority</th>
+                    <th>Connections</th>
+                    <th>Recruiters</th>
+                    <th>Has Proposal</th>
+                    <th>Salary Data</th>
+                    <th>Recommendation</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var target in FilteredTargets)
+                {
+                    <tr>
+                        <td style="font-weight: 500;">@target.Company</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <div style="width: 50px; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden;">
+                                    <div style="width: @(target.Priority)%; height: 100%; background: @GetPriorityBarColor(target.Priority);"></div>
+                                </div>
+                                <span class="text-muted" style="font-size: 12px;">@target.Priority</span>
+                            </div>
+                        </td>
+                        <td>@target.ExistingConnections</td>
+                        <td class="text-cyan">@target.RecruiterConnections</td>
+                        <td>
+                            @if (target.HasProposal)
+                            {
+                                <StatusBadge Text="Yes" Color="green" />
+                            }
+                            else
+                            {
+                                <span class="text-muted">No</span>
+                            }
+                        </td>
+                        <td class="text-cyan">
+                            @if (!string.IsNullOrEmpty(target.SalaryHint))
+                            {
+                                @TruncateText(target.SalaryHint, 25)
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                        </td>
+                        <td style="font-size: 12px;">@target.Recommendation</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* Recent Recruiter Connections *@
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <h3 class="card-title">Recent Recruiter Connections</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Company</th>
+                    <th>Position</th>
+                    <th>Connected</th>
+                    <th>Profile</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var conn in _recentRecruiters.Take(30))
+                {
+                    <tr>
+                        <td>@conn.FullName</td>
+                        <td style="font-weight: 500;">@conn.Company</td>
+                        <td>@conn.Position</td>
+                        <td class="text-muted">@(conn.ConnectedOn?.ToString("MMM dd, yyyy") ?? "-")</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(conn.ProfileUrl))
+                            {
+                                <a href="@conn.ProfileUrl" target="_blank">View</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* Network Growth Chart *@
+    <div class="card">
+        <h3 class="card-title">Connection Growth by Month</h3>
+        @foreach (var month in _monthlyGrowth.Take(12))
+        {
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                <span class="text-muted" style="min-width: 80px; font-size: 12px;">@month.Month</span>
+                <div style="flex: 1; height: 20px; background: var(--bg-hover); border-radius: 3px; overflow: hidden;">
+                    <div style="width: @(month.BarWidth)%; height: 100%; background: var(--accent); border-radius: 3px;"></div>
+                </div>
+                <span style="min-width: 40px; text-align: right; font-size: 12px;">@month.Count</span>
+            </div>
+        }
+    </div>
+}
+else if (!_loading && _connections.Count == 0)
+{
+    <div class="card">
+        <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+            Enter the path to your LinkedIn export folder and click "Analyze Network" to get started.
+        </p>
+    </div>
+}
+
+@code {
+    private bool _loading;
+    private bool _analyzing;
+    private string _exportPath = "";
+    private string _statusMessage = "";
+    private bool _statusSuccess;
+    private string _targetFilter = "";
+
+    private List<LinkedInConnection> _connections = [];
+    private List<ConnectionTarget> _targets = [];
+    private List<RecruiterCompanyGroup> _topRecruiterCompanies = [];
+    private List<LinkedInConnection> _recentRecruiters = [];
+    private List<MonthlyGrowth> _monthlyGrowth = [];
+
+    // Stats
+    private string _totalConnections = "0";
+    private string _recruiterCount = "0";
+    private string _recruiterPct = "0%";
+
+    private List<ConnectionTarget> FilteredTargets => _targetFilter switch
+    {
+        "no-recruiter" => _targets.Where(t => t.RecruiterConnections == 0).ToList(),
+        "has-proposal" => _targets.Where(t => t.HasProposal).ToList(),
+        "high-priority" => _targets.Where(t => t.Priority >= 75).ToList(),
+        _ => _targets,
+    };
+
+    private async Task AnalyzeConnections()
+    {
+        if (string.IsNullOrWhiteSpace(_exportPath))
+        {
+            _statusMessage = "Please enter the path to your LinkedIn export folder.";
+            _statusSuccess = false;
+            return;
+        }
+
+        _analyzing = true;
+        _loading = true;
+        _statusMessage = "Parsing connections...";
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var parser = new LinkedInDataParser(DataDir.Path);
+            _connections = await parser.ParseConnectionsAsync(Path.Combine(_exportPath, "Connections.csv"));
+
+            // Load proposals
+            var proposalsPath = Path.Combine(DataDir.Path, "linkedin-proposals.json");
+            List<LinkedInProposal> proposals = [];
+            if (File.Exists(proposalsPath))
+            {
+                var json = await File.ReadAllTextAsync(proposalsPath);
+                proposals = JsonSerializer.Deserialize<List<LinkedInProposal>>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+            }
+
+            // Generate targets
+            _targets = parser.GenerateConnectionTargets(_connections, proposals);
+
+            // Top recruiter companies
+            _topRecruiterCompanies = _connections
+                .Where(c => c.IsRecruiter && !string.IsNullOrEmpty(c.Company))
+                .GroupBy(c => c.Company)
+                .Select(g => new RecruiterCompanyGroup
+                {
+                    Company = g.Key,
+                    RecruiterCount = g.Count(),
+                    TotalCount = _connections.Count(c => c.Company == g.Key),
+                    LatestDate = g.Max(c => c.ConnectedOn),
+                })
+                .OrderByDescending(g => g.RecruiterCount)
+                .Take(20)
+                .ToList();
+
+            // Recent recruiters
+            _recentRecruiters = _connections
+                .Where(c => c.IsRecruiter)
+                .OrderByDescending(c => c.ConnectedOn)
+                .ToList();
+
+            // Monthly growth
+            _monthlyGrowth = _connections
+                .Where(c => c.ConnectedOn.HasValue)
+                .GroupBy(c => c.ConnectedOn!.Value.ToString("yyyy-MM"))
+                .Select(g => new MonthlyGrowth { Month = g.Key, Count = g.Count() })
+                .OrderByDescending(g => g.Month)
+                .Take(12)
+                .ToList();
+
+            var maxCount = _monthlyGrowth.Count > 0 ? _monthlyGrowth.Max(m => m.Count) : 1;
+            foreach (var m in _monthlyGrowth)
+                m.BarWidth = (int)((double)m.Count / maxCount * 100);
+
+            // Stats
+            var recruiters = _connections.Count(c => c.IsRecruiter);
+            _totalConnections = _connections.Count.ToString("N0");
+            _recruiterCount = recruiters.ToString();
+            _recruiterPct = _connections.Count > 0 ? $"{(double)recruiters / _connections.Count * 100:F1}%" : "0%";
+
+            _statusMessage = $"Analyzed {_connections.Count} connections, found {recruiters} recruiters.";
+            _statusSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Analysis failed: {ex.Message}";
+            _statusSuccess = false;
+        }
+        finally
+        {
+            _analyzing = false;
+            _loading = false;
+        }
+    }
+
+    private static string GetPriorityBarColor(int priority) => priority switch
+    {
+        >= 80 => "var(--success)",
+        >= 60 => "var(--accent)",
+        >= 40 => "var(--warning)",
+        _ => "var(--text-muted)",
+    };
+
+    private static string TruncateText(string text, int max) =>
+        text.Length <= max ? text : text[..max] + "...";
+
+    private sealed class RecruiterCompanyGroup
+    {
+        public string Company { get; set; } = "";
+        public int RecruiterCount { get; set; }
+        public int TotalCount { get; set; }
+        public DateTimeOffset? LatestDate { get; set; }
+    }
+
+    private sealed class MonthlyGrowth
+    {
+        public string Month { get; set; } = "";
+        public int Count { get; set; }
+        public int BarWidth { get; set; }
+    }
+}

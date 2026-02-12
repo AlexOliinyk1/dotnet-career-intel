@@ -1,0 +1,244 @@
+@page "/learning/micro"
+@inject LearningProgressTracker Tracker
+@inject DataDirectoryConfig DataDir
+
+<div class="page-header">
+    <h1 class="page-title">Micro Learning</h1>
+    <p class="page-subtitle">Quick 30-60 minute focused learning tasks based on your weakest areas</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Analyzing your learning progress..." />
+
+@if (!_loading && _error is not null)
+{
+    <div class="card" style="border-left: 4px solid var(--color-red, #e74c3c);">
+        <h3 class="card-title">Error Loading Data</h3>
+        <p>@_error</p>
+        <p class="text-muted">Try running a study session from the CLI first to generate progress data.</p>
+    </div>
+}
+
+@if (!_loading && _error is null && !_hasData)
+{
+    <div class="card">
+        <h3 class="card-title">Start Your Learning Journey</h3>
+        <p>No learning progress data found yet. Here's how to get started:</p>
+        <ul style="margin: 0.75rem 0; padding-left: 1.5rem;">
+            <li>Use the CLI <code>micro-learn</code> command to study topics interactively</li>
+            <li>Take quizzes to track your quiz accuracy across topics</li>
+            <li>Record your self-confidence per topic to get personalized recommendations</li>
+        </ul>
+        <p class="text-muted">Once you have some study history, this page will show your focus areas and generate targeted study sessions.</p>
+        <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+            <a href="/learning/resources" class="btn btn-primary">Browse Topic Bank</a>
+            <a href="/learning" class="btn">Skills Gap Analysis</a>
+        </div>
+    </div>
+}
+
+@if (!_loading && _error is null && _hasData)
+{
+    <div class="card-grid">
+        <StatCard Label="Overall Readiness" Value="@($"{_readiness.OverallScore:F0}%")"
+                  Sub="@_readiness.Verdict"
+                  CssClass="@GetReadinessCss(_readiness.OverallScore)" />
+        <StatCard Label="Verdict" Value="@_readiness.Verdict"
+                  Sub="based on all topics"
+                  CssClass="@GetVerdictCss(_readiness.Verdict)" />
+        <StatCard Label="Study Streak" Value="@($"{_progress!.CurrentStreak} days")"
+                  Sub="@($"longest: {_progress.LongestStreak} days")" CssClass="text-yellow" />
+        <StatCard Label="Total Study Time" Value="@($"{_progress.TotalStudyMinutes / 60.0:F1} hours")"
+                  Sub="@($"{_progress.TotalStudyMinutes} minutes total")" CssClass="text-cyan" />
+    </div>
+
+    @if (_recommendation.FocusTopics.Count > 0)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Focus on These</h2>
+            <p class="text-muted">Topics that need the most attention based on coverage and quiz performance</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem;">
+                @foreach (var topic in _recommendation.FocusTopics)
+                {
+                    <span class="badge badge-red">@topic</span>
+                }
+            </div>
+        </div>
+    }
+
+    @if (_recommendation.ReviewTopics.Count > 0)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <h2 class="card-title">Due for Review</h2>
+            <p class="text-muted">Topics you've studied but haven't revisited in over 7 days</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem;">
+                @foreach (var topic in _recommendation.ReviewTopics)
+                {
+                    <span class="badge badge-yellow">@topic</span>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Overall Advice</h2>
+        <p>@_recommendation.OverallAdvice</p>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 class="card-title" style="margin: 0;">Study Session Generator</h2>
+            <button class="btn btn-primary" @onclick="GenerateSession" disabled="@_generatingSession">
+                @(_generatingSession ? "Generating..." : "Generate Study Session")
+            </button>
+        </div>
+        <p class="text-muted" style="margin-top: 0.5rem;">
+            Generate a focused set of questions prioritized by your weakest areas
+        </p>
+    </div>
+
+    @if (_session is not null)
+    {
+        <div class="card" style="margin-top: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h2 class="card-title" style="margin: 0;">@_session.SessionName</h2>
+                    <p class="text-muted" style="margin: 0.25rem 0 0 0;">Focus area: @_session.FocusArea</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <span class="badge">@_session.Questions.Count questions</span>
+                    <span class="badge badge-cyan">~@_session.EstimatedMinutes min</span>
+                </div>
+            </div>
+
+            @if (_session.Questions.Count > 0)
+            {
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">Question</th>
+                            <th>Difficulty</th>
+                            <th>Tags</th>
+                            <th>Previously Studied</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in _session.Questions)
+                        {
+                            <tr>
+                                <td>@q.Question</td>
+                                <td>
+                                    <StatusBadge Text="@q.Difficulty"
+                                                 Color="@GetDifficultyColor(q.Difficulty)" />
+                                </td>
+                                <td>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                        @foreach (var tag in q.Tags.Take(4))
+                                        {
+                                            <span class="badge">@tag</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <StatusBadge Text="@(q.IsPreviouslyStudied ? "Yes" : "No")"
+                                                 Color="@(q.IsPreviouslyStudied ? "green" : "gray")" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted">No questions available for this session. Add more topics to the question bank.</p>
+            }
+        </div>
+    }
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+        <a href="/learning/progress" class="btn btn-primary">View Full Progress</a>
+        <a href="/learning/resources" class="btn">Browse Topic Bank</a>
+        <a href="/learning/adaptive" class="btn">Adaptive Plan</a>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private bool _hasData;
+    private bool _generatingSession;
+
+    private LearningProgress? _progress;
+    private ReadinessAssessment _readiness = new(0, [], "Not Ready", []);
+    private StudyRecommendation _recommendation = new([], [], [], [], "");
+    private StudySession? _session;
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            _progress = Tracker.LoadProgress(DataDir.Path);
+
+            _hasData = _progress.TopicProgress.Count > 0
+                       || _progress.TotalQuestionsStudied > 0
+                       || _progress.StudyLog.Count > 0;
+
+            if (_hasData)
+            {
+                _recommendation = Tracker.GetRecommendation(_progress);
+                _readiness = Tracker.AssessReadiness(_progress);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load learning progress: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void GenerateSession()
+    {
+        if (_progress is null) return;
+
+        _generatingSession = true;
+
+        try
+        {
+            _session = Tracker.GenerateStudySession(_progress, DataDir.Path);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to generate study session: {ex.Message}";
+        }
+        finally
+        {
+            _generatingSession = false;
+        }
+    }
+
+    private static string GetDifficultyColor(string difficulty) => difficulty.ToLowerInvariant() switch
+    {
+        "junior" => "green",
+        "mid" or "middle" or "intermediate" => "yellow",
+        "senior" or "advanced" or "expert" => "red",
+        _ => "gray"
+    };
+
+    private static string GetReadinessCss(double score) => score switch
+    {
+        >= 70 => "text-green",
+        >= 50 => "text-cyan",
+        >= 30 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetVerdictCss(string verdict) => verdict switch
+    {
+        "Well Prepared" => "text-green",
+        "Ready" => "text-cyan",
+        "Almost Ready" => "text-yellow",
+        _ => "text-red"
+    };
+}

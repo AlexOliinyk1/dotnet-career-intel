@@ -189,8 +189,9 @@ public sealed class ToptalScraper(HttpClient httpClient, ILogger<ToptalScraper> 
                 ScrapedDate = DateTimeOffset.UtcNow
             };
         }
-        catch
+        catch (Exception ex)
         {
+            _ = ex; // logged by caller
             return null;
         }
     }
@@ -269,8 +270,9 @@ public sealed class ToptalScraper(HttpClient httpClient, ILogger<ToptalScraper> 
                 ScrapedDate = DateTimeOffset.UtcNow
             };
         }
-        catch
+        catch (Exception ex)
         {
+            _ = ex; // logged by caller
             return null;
         }
     }

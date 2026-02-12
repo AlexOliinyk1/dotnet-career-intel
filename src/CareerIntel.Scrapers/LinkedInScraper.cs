@@ -11,6 +11,15 @@ namespace CareerIntel.Scrapers;
 /// Scrapes public job listings from LinkedIn's guest-accessible search pages.
 /// LinkedIn aggressively rate-limits and may return auth walls — this scraper
 /// handles those scenarios gracefully.
+/// <para>
+/// <strong>LEGAL NOTICE:</strong> LinkedIn's Terms of Service (Section 8.2) prohibit
+/// scraping or automated data collection. This scraper is provided for personal,
+/// educational, and research use only. It accesses only publicly available guest
+/// search pages without authentication. The scraper respects robots.txt, enforces
+/// rate limits (5 req/min, 5s delay), and implements circuit breakers.
+/// For commercial or production use, use the official LinkedIn API
+/// (https://developer.linkedin.com/) with proper authorization.
+/// </para>
 /// </summary>
 public sealed class LinkedInScraper(HttpClient httpClient, ILogger<LinkedInScraper> logger, ScrapingCompliance? compliance = null)
     : BaseScraper(httpClient, logger, compliance)
@@ -29,6 +38,9 @@ public sealed class LinkedInScraper(HttpClient httpClient, ILogger<LinkedInScrap
     {
         var vacancies = new List<JobVacancy>();
 
+        logger.LogWarning("[LinkedIn] DISCLAIMER: LinkedIn scraping is for personal/research use only. " +
+            "LinkedIn ToS (Section 8.2) prohibits automated data collection. " +
+            "For commercial use, switch to the official LinkedIn API.");
         logger.LogInformation("[LinkedIn] Starting scrape for keywords: {Keywords}", keywords);
 
         for (var page = 0; page < maxPages; page++)
@@ -133,8 +145,9 @@ public sealed class LinkedInScraper(HttpClient httpClient, ILogger<LinkedInScrap
                 ScrapedDate = DateTimeOffset.UtcNow
             };
         }
-        catch
+        catch (Exception ex)
         {
+            _ = ex; // logged by caller
             return null;
         }
     }
@@ -188,8 +201,9 @@ public sealed class LinkedInScraper(HttpClient httpClient, ILogger<LinkedInScrap
 
             return vacancy;
         }
-        catch
+        catch (Exception ex)
         {
+            _ = ex; // logged by caller
             return null;
         }
     }

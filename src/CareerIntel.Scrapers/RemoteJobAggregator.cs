@@ -295,6 +295,36 @@ public sealed class RemoteJobAggregator
             DotNetFriendly = 5,
             EuFriendly = 6,
             Description = "Open remote job opportunities"
+        },
+        new RemoteJobBoard
+        {
+            Name = "ZipRecruiter",
+            Url = "https://ziprecruiter.com",
+            Priority = 8,
+            Tags = ["large-volume", "us-focused", "aggregator", "high-salary"],
+            DotNetFriendly = 8,
+            EuFriendly = 4,
+            Description = "Major US job aggregator - high volume .NET positions with salary data"
+        },
+        new RemoteJobBoard
+        {
+            Name = "Hired",
+            Url = "https://hired.com",
+            Priority = 9,
+            Tags = ["tech-only", "high-paying", "companies-apply-to-you"],
+            DotNetFriendly = 8,
+            EuFriendly = 6,
+            Description = "Tech marketplace where companies apply to you - $140K-$200K+ positions"
+        },
+        new RemoteJobBoard
+        {
+            Name = "Torre.ai",
+            Url = "https://torre.ai",
+            Priority = 7,
+            Tags = ["ai-matching", "global", "freelance", "remote"],
+            DotNetFriendly = 7,
+            EuFriendly = 8,
+            Description = "AI-powered talent matching - global remote with transparent salary"
         }
     ];
 

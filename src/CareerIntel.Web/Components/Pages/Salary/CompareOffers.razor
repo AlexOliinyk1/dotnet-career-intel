@@ -1,0 +1,416 @@
+@page "/salary/compare"
+@using CareerIntel.Matching
+@using CareerIntel.Intelligence.Models
+@inject NegotiationRepository NegotiationRepository
+@inject NegotiationEngine NegotiationEngine
+@inject DataDirectoryConfig DataDir
+@inject CareerIntel.Web.Services.ToastService Toast
+@rendermode InteractiveServer
+
+<div class="page-header">
+    <h1 class="page-title">Compare Offers</h1>
+    <p class="page-subtitle">Side-by-side offer comparison with intelligent scoring and ranking</p>
+</div>
+
+<LoadingSpinner Loading="@_loading" Message="Loading offers..." />
+
+@if (!_loading)
+{
+    @* StatCards *@
+    <div class="card-grid" style="margin-bottom: 1.5rem;">
+        <StatCard Label="Total Offers" Value="@_offers.Count.ToString()" />
+        <StatCard Label="Active" Value="@ActiveCount.ToString()" CssClass="highlight-blue" />
+        <StatCard Label="Highest Offer" Value="@FormatHighestOffer()" CssClass="highlight-green" />
+        <StatCard Label="Avg Offer" Value="@FormatAvgOffer()" CssClass="highlight-cyan" />
+    </div>
+
+    @if (_offers.Count == 0)
+    {
+        <div class="card">
+            <p style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                No offers recorded yet. Add your first offer below.
+            </p>
+        </div>
+    }
+    else
+    {
+        @* Main comparison table *@
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h2 class="card-title">All Offers</h2>
+            <div class="data-table" style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th>Role</th>
+                            <th>Offered Salary</th>
+                            <th>Currency</th>
+                            <th>Type</th>
+                            <th>Market Rate</th>
+                            <th>Status</th>
+                            <th>Counter Offer</th>
+                            <th>Received Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var offer in _offers)
+                        {
+                            <tr>
+                                <td><strong>@offer.Company</strong></td>
+                                <td>@offer.Role</td>
+                                <td style="color: var(--color-cyan, #00bcd4);">
+                                    <strong>@offer.OfferedSalary.ToString("N0")</strong>
+                                </td>
+                                <td><span class="badge">@offer.OfferedCurrency</span></td>
+                                <td>@offer.EngagementType</td>
+                                <td>@offer.MarketRate.ToString("N0")</td>
+                                <td>
+                                    <StatusBadge Text="@offer.Status" Color="@GetStatusColor(offer.Status)" />
+                                </td>
+                                <td>
+                                    @if (offer.CounterOffer.HasValue)
+                                    {
+                                        <span style="color: var(--color-cyan, #00bcd4);">@offer.CounterOffer.Value.ToString("N0")</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--text-muted);">-</span>
+                                    }
+                                </td>
+                                <td>@offer.ReceivedDate.ToString("MMM dd, yyyy")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* Compare Offers button *@
+        @if (_offers.Count >= 2)
+        {
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <button class="btn btn-primary" @onclick="RunComparison" disabled="@_comparing">
+                        @if (_comparing)
+                        {
+                            <span>Comparing...</span>
+                        }
+                        else
+                        {
+                            <span>Compare Offers</span>
+                        }
+                    </button>
+                    @if (!string.IsNullOrEmpty(_comparisonError))
+                    {
+                        <span style="color: var(--color-red, #e74c3c);">@_comparisonError</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @* Comparison results *@
+        @if (_comparison is not null)
+        {
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <h2 class="card-title">Comparison Rankings</h2>
+                <div class="data-table" style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Company</th>
+                                <th>Role</th>
+                                <th>Salary</th>
+                                <th>Overall Score</th>
+                                <th>Comp Score</th>
+                                <th>Growth Score</th>
+                                <th>Stack Score</th>
+                                <th>Verdict</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var ranked in _comparison.Rankings)
+                            {
+                                <tr>
+                                    <td><strong>#@ranked.Rank</strong></td>
+                                    <td><strong>@ranked.Offer.Company</strong></td>
+                                    <td>@ranked.Offer.Role</td>
+                                    <td style="color: var(--color-cyan, #00bcd4);">
+                                        <strong>@ranked.Offer.OfferedSalary.ToString("N0")</strong>
+                                    </td>
+                                    <td><strong class="@GetScoreCss(ranked.OverallScore)">@ranked.OverallScore.ToString("F1")</strong></td>
+                                    <td class="@GetScoreCss(ranked.CompScore)">@ranked.CompScore.ToString("F1")</td>
+                                    <td class="@GetScoreCss(ranked.GrowthScore)">@ranked.GrowthScore.ToString("F1")</td>
+                                    <td class="@GetScoreCss(ranked.StackAlignmentScore)">@ranked.StackAlignmentScore.ToString("F1")</td>
+                                    <td>
+                                        <StatusBadge Text="@ranked.Verdict" Color="@GetVerdictColor(ranked.OverallScore)" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            @* Recommendation *@
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <h2 class="card-title">Recommendation</h2>
+                <p style="line-height: 1.6;">@_comparison.Recommendation</p>
+            </div>
+        }
+    }
+
+    @* Add Offer form *@
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2 class="card-title">Add Offer</h2>
+        <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+                <label>Company</label>
+                <input type="text" @bind="_newCompany" placeholder="Company name"
+                       style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label>Role</label>
+                <input type="text" @bind="_newRole" placeholder="Job title"
+                       style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+                <label>Offered Salary</label>
+                <input type="number" @bind="_newSalary" placeholder="Annual salary"
+                       style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+            </div>
+            <div class="form-group" style="flex: 0.5;">
+                <label>Currency</label>
+                <input type="text" @bind="_newCurrency" placeholder="USD"
+                       style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+                <label>Engagement Type</label>
+                <select @bind="_newEngagementType"
+                        style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;">
+                    <option value="Employment">Employment</option>
+                    <option value="B2B">B2B</option>
+                    <option value="Contract">Contract</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label>Market Rate</label>
+                <input type="number" @bind="_newMarketRate" placeholder="Market rate for this role"
+                       style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit;" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+                <label>Notes</label>
+                <textarea @bind="_newNotes" placeholder="Additional notes about this offer..."
+                          rows="3"
+                          style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-secondary, #2a2a2a); color: inherit; resize: vertical;"></textarea>
+            </div>
+        </div>
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <button class="btn btn-primary" @onclick="SaveOffer"
+                    disabled="@(string.IsNullOrWhiteSpace(_newCompany) || _newSalary <= 0 || _saving)">
+                @if (_saving)
+                {
+                    <span>Saving...</span>
+                }
+                else
+                {
+                    <span>Save Offer</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+        <a href="/salary" class="btn btn-primary">Salary Intelligence</a>
+        <a href="/salary/negotiate" class="btn">Negotiation Tools</a>
+    </div>
+}
+
+@code {
+    private List<NegotiationState> _offers = [];
+    private bool _loading = true;
+    private bool _saving;
+    private bool _comparing;
+    private OfferComparison? _comparison;
+    private string? _comparisonError;
+
+    // Form fields
+    private string _newCompany = string.Empty;
+    private string _newRole = string.Empty;
+    private decimal _newSalary;
+    private string _newCurrency = "USD";
+    private string _newEngagementType = "Employment";
+    private decimal _newMarketRate;
+    private string _newNotes = string.Empty;
+
+    private int ActiveCount => _offers.Count(o =>
+        o.Status == "Pending" || o.Status == "Negotiating");
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOffers();
+        _loading = false;
+    }
+
+    private async Task LoadOffers()
+    {
+        try
+        {
+            _offers = await NegotiationRepository.GetAllAsync();
+        }
+        catch
+        {
+            _offers = [];
+        }
+    }
+
+    private async Task SaveOffer()
+    {
+        if (string.IsNullOrWhiteSpace(_newCompany) || _newSalary <= 0)
+            return;
+
+        _saving = true;
+
+        try
+        {
+            var state = new NegotiationState
+            {
+                Company = _newCompany,
+                Role = _newRole,
+                OfferedSalary = _newSalary,
+                OfferedCurrency = string.IsNullOrWhiteSpace(_newCurrency) ? "USD" : _newCurrency,
+                EngagementType = _newEngagementType,
+                MarketRate = _newMarketRate,
+                Status = "Pending",
+                ReceivedDate = DateTimeOffset.UtcNow,
+                Leverage = new List<string>(),
+                Notes = _newNotes
+            };
+
+            await NegotiationRepository.SaveAsync(state);
+            await LoadOffers();
+
+            Toast.Success($"Offer from {state.Company} saved");
+
+            // Reset form
+            _newCompany = string.Empty;
+            _newRole = string.Empty;
+            _newSalary = 0;
+            _newCurrency = "USD";
+            _newEngagementType = "Employment";
+            _newMarketRate = 0;
+            _newNotes = string.Empty;
+
+            // Clear comparison results since data changed
+            _comparison = null;
+            _comparisonError = null;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Failed to save offer: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task RunComparison()
+    {
+        _comparing = true;
+        _comparisonError = null;
+        _comparison = null;
+
+        try
+        {
+            var profile = await LoadProfile();
+            _comparison = NegotiationEngine.CompareOffers(_offers, profile);
+        }
+        catch (Exception ex)
+        {
+            _comparisonError = $"Comparison failed: {ex.Message}";
+        }
+        finally
+        {
+            _comparing = false;
+        }
+    }
+
+    private async Task<UserProfile> LoadProfile()
+    {
+        var profilePath = Path.Combine(DataDir.Path, "profile.json");
+
+        if (File.Exists(profilePath))
+        {
+            var json = await File.ReadAllTextAsync(profilePath);
+            return System.Text.Json.JsonSerializer.Deserialize<UserProfile>(json,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? new UserProfile();
+        }
+
+        return new UserProfile();
+    }
+
+    private string FormatHighestOffer()
+    {
+        if (_offers.Count == 0)
+            return "-";
+
+        var highest = _offers.MaxBy(o => o.OfferedSalary);
+        if (highest is null)
+            return "-";
+
+        return $"{FormatCurrencySymbol(highest.OfferedCurrency)}{highest.OfferedSalary:N0}";
+    }
+
+    private string FormatAvgOffer()
+    {
+        if (_offers.Count == 0)
+            return "-";
+
+        var avg = _offers.Average(o => o.OfferedSalary);
+        return $"${avg:N0}";
+    }
+
+    private static string FormatCurrencySymbol(string currency) => currency switch
+    {
+        "EUR" => "\u20ac",
+        "GBP" => "\u00a3",
+        "PLN" => "",
+        "CHF" => "CHF ",
+        _ => "$"
+    };
+
+    private static string GetStatusColor(string status) => status switch
+    {
+        "Pending" => "yellow",
+        "Negotiating" => "blue",
+        "Accepted" => "green",
+        "Rejected" => "red",
+        "Expired" => "gray",
+        _ => "gray"
+    };
+
+    private static string GetScoreCss(double score) => score switch
+    {
+        >= 70 => "text-green",
+        >= 50 => "text-cyan",
+        >= 30 => "text-yellow",
+        _ => "text-red"
+    };
+
+    private static string GetVerdictColor(double overallScore) => overallScore switch
+    {
+        >= 80 => "green",
+        >= 65 => "cyan",
+        >= 50 => "yellow",
+        >= 35 => "orange",
+        _ => "red"
+    };
+}

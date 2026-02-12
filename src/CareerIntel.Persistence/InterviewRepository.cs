@@ -23,9 +23,9 @@ public sealed class InterviewRepository(CareerIntelDbContext db)
     /// </summary>
     public async Task<List<InterviewFeedback>> GetAllFeedbackAsync(CancellationToken ct = default)
     {
-        // SQLite cannot ORDER BY DateTimeOffset — sort client-side
-        var results = await db.InterviewFeedbacks.ToListAsync(ct);
-        return results.OrderByDescending(f => f.InterviewDate).ToList();
+        return await db.InterviewFeedbacks
+            .OrderByDescending(f => f.InterviewDate)
+            .ToListAsync(ct);
     }
 
     /// <summary>
@@ -33,11 +33,10 @@ public sealed class InterviewRepository(CareerIntelDbContext db)
     /// </summary>
     public async Task<List<InterviewFeedback>> GetByCompanyAsync(string company, CancellationToken ct = default)
     {
-        // SQLite cannot ORDER BY DateTimeOffset — sort client-side
-        var results = await db.InterviewFeedbacks
+        return await db.InterviewFeedbacks
             .Where(f => EF.Functions.Like(f.Company, company))
+            .OrderByDescending(f => f.InterviewDate)
             .ToListAsync(ct);
-        return results.OrderByDescending(f => f.InterviewDate).ToList();
     }
 
     /// <summary>

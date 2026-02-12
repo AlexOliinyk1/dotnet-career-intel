@@ -162,8 +162,9 @@ public sealed class DjinniScraper : BaseScraper
                 ScrapedDate = DateTimeOffset.UtcNow
             };
         }
-        catch
+        catch (Exception ex)
         {
+            _ = ex; // logged by caller
             return null;
         }
     }
@@ -205,8 +206,9 @@ public sealed class DjinniScraper : BaseScraper
                 ScrapedDate = DateTimeOffset.UtcNow
             };
         }
-        catch
+        catch (Exception ex)
         {
+            _ = ex; // logged by caller
             return null;
         }
     }

@@ -1,10 +1,19 @@
 @page "/learning/resources"
 @inject DataDirectoryConfig DataDir
+@inject ResourceRecommendationEngine ResourceEngine
+@inject VacancyRepository VacancyRepo
 
 <div class="page-header">
     <h1 class="page-title">Learning Resources</h1>
     <p class="page-subtitle">Interview topics, practice questions, and curated .NET learning materials</p>
 </div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="card" style="margin-bottom: 1rem; border-color: var(--red);">
+        <p style="color: var(--red);">@_errorMessage</p>
+    </div>
+}
 
 <div class="card-grid">
     <StatCard Label="Topic Areas" Value="@_topics.Count.ToString()"
@@ -14,6 +23,97 @@
     <StatCard Label="Difficulty Levels" Value="3"
               Sub="Junior, Mid, Senior" CssClass="text-green" />
 </div>
+
+@* Personalized Resource Plan *@
+@if (_resourcePlan is not null)
+{
+    <div class="card" style="margin-top: 1.5rem; border-left: 3px solid var(--color-cyan);">
+        <h2 class="card-title">Your Personalized Learning Plan</h2>
+        <div class="card-grid" style="margin-bottom: 1rem;">
+            <StatCard Label="Recommendations"
+                      Value="@_resourcePlan.Recommendations.Count.ToString()"
+                      Sub="topics to study" />
+            <StatCard Label="Total Hours"
+                      Value="@_resourcePlan.TotalEstimatedHours.ToString()"
+                      Sub="estimated study time" CssClass="text-cyan" />
+            <StatCard Label="Priority"
+                      Value="@_resourcePlan.Priority"
+                      CssClass="@GetPlanPriorityCss(_resourcePlan.Priority)" />
+            <StatCard Label="Quick Wins"
+                      Value="@_resourcePlan.QuickWins.Count.ToString()"
+                      Sub="learn in under 8 hours" CssClass="text-green" />
+        </div>
+
+        @if (_resourcePlan.QuickWins.Count > 0)
+        {
+            <div style="margin-bottom: 1rem;">
+                <h3 class="section-title">Quick Wins (under 8 hours)</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                    @foreach (var qw in _resourcePlan.QuickWins)
+                    {
+                        <StatusBadge Text="@qw" Color="green" />
+                    }
+                </div>
+            </div>
+        }
+
+        @foreach (var rec in _resourcePlan.Recommendations)
+        {
+            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <div>
+                        <strong>@rec.Skill</strong>
+                        <span class="text-muted" style="margin-left: 0.5rem;">(@rec.TopicArea)</span>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <StatusBadge Text="@rec.Priority" Color="@GetPriorityColor(rec.Priority)" />
+                        <span class="text-muted">~@rec.EstimatedHours hrs</span>
+                    </div>
+                </div>
+
+                @if (rec.Links.Count > 0)
+                {
+                    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        @foreach (var link in rec.Links)
+                        {
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span class="badge">@link.Type</span>
+                                <a href="@link.Url" target="_blank" rel="noopener noreferrer">@link.Title</a>
+                                <span class="text-muted" style="font-size: 0.8em;">(@link.Platform)</span>
+                                @if (link.IsFree)
+                                {
+                                    <StatusBadge Text="Free" Color="green" />
+                                }
+                                @if (!string.IsNullOrEmpty(link.Language) && !link.Language.Equals("English", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="badge">@link.Language</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+else if (_skills.Count > 0 && _gapSkills.Count == 0 && !_loading)
+{
+    <div class="card" style="margin-top: 1.5rem; border-left: 3px solid var(--color-green);">
+        <p style="padding: 1rem; margin: 0;">
+            No skill gaps detected -- your profile covers all major market skills. Check back after new vacancies are scraped.
+        </p>
+    </div>
+}
+else if (_skills.Count == 0 && !_loading)
+{
+    <div class="card" style="margin-top: 1.5rem;">
+        <p class="text-muted" style="padding: 1rem; margin: 0;">
+            Add your skills in the <a href="/settings/profile">Profile page</a> to get personalized resource recommendations.
+        </p>
+    </div>
+}
+
+<LoadingSpinner Loading="@_loading" Message="Generating resource recommendations..." />
 
 <div class="card" style="margin-top: 1.5rem;">
     <h2 class="card-title">Interview Topic Bank</h2>
@@ -93,6 +193,40 @@
                 </table>
             </div>
 
+            @* Show engine-generated learning path for this topic *@
+            @if (_topicPaths.TryGetValue(topic.Id, out var learningPath))
+            {
+                <div style="margin-top: 1rem;">
+                    <h4 class="section-title">Learning Path: @learningPath.TopicName</h4>
+                    @foreach (var phase in learningPath.Phases)
+                    {
+                        <div style="border-left: 2px solid var(--color-cyan); padding-left: 1rem; margin-bottom: 0.75rem;">
+                            <strong>@phase.Name</strong>
+                            <span class="text-muted" style="margin-left: 0.5rem;">~@phase.EstimatedHours hrs</span>
+                            @if (phase.Prerequisites.Count > 0)
+                            {
+                                <div class="text-muted" style="font-size: 0.85em;">
+                                    Prerequisites: @string.Join(", ", phase.Prerequisites)
+                                </div>
+                            }
+                            <div style="display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem;">
+                                @foreach (var res in phase.Resources)
+                                {
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span class="badge">@res.Type</span>
+                                        <a href="@res.Url" target="_blank" rel="noopener noreferrer">@res.Title</a>
+                                        @if (res.IsFree)
+                                        {
+                                            <StatusBadge Text="Free" Color="green" />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
             @if (topic.Resources.Count > 0)
             {
                 <div style="margin-top: 1rem;">
@@ -154,11 +288,117 @@
     private IReadOnlyList<TopicArea> _topics = [];
     private int _totalQuestions;
     private HashSet<string> _expandedTopics = [];
+    private bool _loading = true;
+    private string? _errorMessage;
 
-    protected override void OnInitialized()
+    private List<string> _skills = [];
+    private List<string> _gapSkills = [];
+    private ResourcePlan? _resourcePlan;
+    private Dictionary<string, TopicLearningPath> _topicPaths = [];
+
+    protected override async Task OnInitializedAsync()
     {
-        _topics = InterviewTopicBank.GetAllTopics();
-        _totalQuestions = _topics.Sum(t => t.Questions.Count);
+        try
+        {
+            _topics = InterviewTopicBank.GetAllTopics();
+            _totalQuestions = _topics.Sum(t => t.Questions.Count);
+
+            // Load user skills and generate personalized recommendations
+            await LoadSkills();
+
+            if (_skills.Count > 0)
+            {
+                await GenerateResourcePlan();
+            }
+
+            // Pre-load learning paths for each topic area
+            LoadTopicPaths();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to generate recommendations: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadSkills()
+    {
+        var path = Path.Combine(DataDir.Path, "my-profile.json");
+        if (!File.Exists(path))
+            return;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("skills", out var skills) && skills.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var skill in skills.EnumerateArray())
+                {
+                    var val = skill.GetString();
+                    if (!string.IsNullOrWhiteSpace(val))
+                        _skills.Add(val);
+                }
+            }
+        }
+        catch
+        {
+            // Use empty skills on parse failure
+        }
+    }
+
+    private async Task GenerateResourcePlan()
+    {
+        try
+        {
+            // Load vacancies and identify skills the market wants but the user lacks
+            var vacancies = await VacancyRepo.GetVacanciesAsync();
+
+            var marketSkills = vacancies
+                .SelectMany(v => v.RequiredSkills.Concat(v.PreferredSkills))
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .GroupBy(s => s.Trim(), StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Count())
+                .Take(30)
+                .Select(g => g.Key)
+                .ToList();
+
+            var userSkillSet = new HashSet<string>(_skills, StringComparer.OrdinalIgnoreCase);
+
+            _gapSkills = marketSkills
+                .Where(s => !userSkillSet.Contains(s))
+                .ToList();
+
+            if (_gapSkills.Count > 0)
+            {
+                _resourcePlan = ResourceEngine.RecommendForGaps(_gapSkills);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to generate resource plan: {ex.Message}";
+        }
+    }
+
+    private void LoadTopicPaths()
+    {
+        try
+        {
+            foreach (var topic in _topics)
+            {
+                var path = ResourceEngine.GetLearningPath(topic.Id);
+                _topicPaths[topic.Id] = path;
+            }
+        }
+        catch
+        {
+            // Non-critical -- topic paths are supplementary
+        }
     }
 
     private void ToggleTopic(string topicId)
@@ -175,6 +415,21 @@
         "mid" or "middle" or "intermediate" => "yellow",
         "senior" or "advanced" or "expert" => "red",
         _ => "gray"
+    };
+
+    private static string GetPriorityColor(string priority) => priority switch
+    {
+        "Critical" => "red",
+        "High" => "yellow",
+        "Medium" => "cyan",
+        _ => "gray"
+    };
+
+    private static string GetPlanPriorityCss(string priority) => priority switch
+    {
+        "Critical" => "text-red",
+        "High" => "text-yellow",
+        _ => "text-cyan"
     };
 
     private static string Truncate(string value, int maxLength) =>

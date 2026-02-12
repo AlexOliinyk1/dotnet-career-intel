@@ -1,24 +1,230 @@
 @page "/interview/questions"
 @inject DataDirectoryConfig DataDir
+@inject QuestionClassifier Classifier
 
 <div class="page-header">
     <h1 class="page-title">Question Bank</h1>
-    <p class="page-subtitle">Browse interview questions by topic with confidence tracking</p>
+    <p class="page-subtitle">Browse interview questions by topic with confidence tracking and AI classification</p>
 </div>
 
 <LoadingSpinner Loading="@_loading" Message="Loading question bank..." />
 
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-red);">
+        <p style="color: var(--color-red); margin: 0;">@_error</p>
+    </div>
+}
+
 @if (!_loading)
 {
     <div class="card-grid" style="margin-bottom: 1rem;">
-        <StatCard Label="Total Topics" Value="@_topics.Count.ToString()" />
-        <StatCard Label="Total Questions" Value="@_topics.Sum(t => t.Questions.Count).ToString()" />
-        <StatCard Label="Tracked Questions" Value="@_confidenceMap.Count.ToString()" />
+        <StatCard Label="Static Topics" Value="@_topics.Count.ToString()" />
+        <StatCard Label="Static Questions" Value="@_topics.Sum(t => t.Questions.Count).ToString()" />
+        <StatCard Label="Scraped Questions" Value="@_dbStats.TotalQuestions.ToString()" />
         <StatCard Label="Avg Confidence"
                   Value="@(_confidenceMap.Count > 0 ? $"{_confidenceMap.Values.Average(c => c.ConfidenceLevel):F0}%" : "-")" />
     </div>
 
+    @* Scraped Question Bank Section *@
+    @if (_dbStats.TotalQuestions > 0)
+    {
+        <div class="card" style="margin-bottom: 1rem;">
+            <h2 class="section-title">Scraped Question Database</h2>
+            <div class="card-grid" style="margin-bottom: 0.75rem;">
+                <StatCard Label="Companies" Value="@_dbStats.TotalCompanies.ToString()" />
+                <StatCard Label="Roles" Value="@_dbStats.TotalRoles.ToString()" />
+                <StatCard Label="Tracked" Value="@_confidenceMap.Count.ToString()" />
+                <StatCard Label="Last Updated" Value="@(_dbStats.LastUpdated != DateTimeOffset.MinValue ? _dbStats.LastUpdated.ToString("MMM dd") : "-")" />
+            </div>
+
+            <div class="form-row" style="margin-bottom: 0.75rem;">
+                <div class="form-group">
+                    <label>Company</label>
+                    <input type="text" @bind="_dbCompanyFilter" placeholder="e.g. Microsoft" />
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <input type="text" @bind="_dbRoleFilter" placeholder="e.g. Senior .NET Developer" />
+                </div>
+                <div class="form-group" style="align-self: flex-end;">
+                    <button class="btn btn-primary" @onclick="SearchDatabaseQuestions">Search</button>
+                </div>
+            </div>
+
+            @if (_dbSearchResults.Count > 0)
+            {
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Category</th>
+                            <th>Difficulty</th>
+                            <th>Source</th>
+                            <th>Asked</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var q in _dbSearchResults.Take(50))
+                        {
+                            <tr @onclick="@(() => ToggleAnswer($"db-{q.Id}"))" style="cursor: pointer;">
+                                <td style="max-width: 320px;">
+                                    @q.Question
+                                    @if (q.KeyConcepts.Count > 0)
+                                    {
+                                        <div style="margin-top: 0.25rem;">
+                                            @foreach (var concept in q.KeyConcepts.Take(4))
+                                            {
+                                                <span class="badge" style="font-size: 0.7rem; margin-right: 0.125rem;">@concept</span>
+                                            }
+                                        </div>
+                                    }
+                                    @if (_expandedAnswers.Contains("db-" + q.Id))
+                                    {
+                                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-surface); border-radius: 4px;">
+                                            @if (!string.IsNullOrEmpty(q.ExpectedAnswer))
+                                            {
+                                                <div style="margin-bottom: 0.5rem;">
+                                                    <strong>Expected Answer:</strong>
+                                                    <p style="margin: 0.25rem 0 0 0; white-space: pre-wrap;">@q.ExpectedAnswer</p>
+                                                </div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(q.InterviewerTips))
+                                            {
+                                                <div>
+                                                    <strong>Interviewer Tips:</strong>
+                                                    <p style="margin: 0.25rem 0 0 0;">@q.InterviewerTips</p>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <StatusBadge Text="@q.Category.ToString()" Color="cyan" />
+                                </td>
+                                <td>
+                                    <StatusBadge Text="@q.Difficulty.ToString()"
+                                                 Color="@GetDbDifficultyColor(q.Difficulty)" />
+                                </td>
+                                <td class="text-muted">@q.Source</td>
+                                <td class="text-muted">@(q.TimesAsked > 0 ? q.TimesAsked.ToString() : "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else if (_dbSearchPerformed)
+            {
+                <p class="text-muted">No scraped questions found for the given company/role. Try broader terms or scrape questions first via CLI.</p>
+            }
+
+            @* Category/Difficulty breakdown *@
+            @if (_dbStats.QuestionsByCategory.Count > 0)
+            {
+                <div style="margin-top: 0.75rem; display: flex; gap: 2rem; flex-wrap: wrap;">
+                    <div>
+                        <strong>By Category:</strong>
+                        <div style="margin-top: 0.25rem;">
+                            @foreach (var (cat, count) in _dbStats.QuestionsByCategory)
+                            {
+                                <span class="badge" style="margin: 0.125rem;">@cat: @count</span>
+                            }
+                        </div>
+                    </div>
+                    <div>
+                        <strong>By Difficulty:</strong>
+                        <div style="margin-top: 0.25rem;">
+                            @foreach (var (diff, count) in _dbStats.QuestionsByDifficulty)
+                            {
+                                <span class="badge" style="margin: 0.125rem;">@diff: @count</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* Classification Section - Classify static bank questions *@
     <div class="card" style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 class="section-title" style="margin-bottom: 0;">AI Classification</h2>
+            <button class="btn" @onclick="ClassifyAllQuestions" disabled="@_classifying">
+                @(_classifying ? "Classifying..." : _classifiedQuestions.Count > 0 ? "Re-classify" : "Classify All Questions")
+            </button>
+        </div>
+        <p class="text-muted" style="margin-top: 0.25rem;">
+            Use the Question Classifier engine to categorize static bank questions by topic, difficulty, and tags.
+        </p>
+
+        @if (_classifiedQuestions.Count > 0)
+        {
+            <div class="card-grid" style="margin: 0.75rem 0;">
+                <StatCard Label="Classified" Value="@_classifiedQuestions.Count.ToString()" />
+                <StatCard Label="Topics Found" Value="@_classifiedQuestions.Select(c => c.TopicId).Distinct().Count().ToString()" />
+                <StatCard Label="Avg Confidence" Value="@($"{_classifiedQuestions.Average(c => c.Confidence):F0}%")" />
+                <StatCard Label="Novel" Value="@_classifiedQuestions.Count(c => c.IsNovel).ToString()" />
+            </div>
+
+            @* Group classified questions by topic *@
+            @foreach (var topicGroup in _classifiedQuestions.GroupBy(c => c.TopicName).OrderByDescending(g => g.Count()))
+            {
+                <div style="margin-bottom: 0.75rem; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;"
+                         @onclick="@(() => ToggleTopic($"classified-{topicGroup.Key}"))">
+                        <strong>@topicGroup.Key</strong>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <span class="badge">@topicGroup.Count() questions</span>
+                            <span class="badge">avg @($"{topicGroup.Average(c => c.Confidence):F0}%") confidence</span>
+                        </div>
+                    </div>
+
+                    @if (_expandedTopics.Contains("classified-" + topicGroup.Key))
+                    {
+                        <table class="data-table" style="margin-top: 0.5rem;">
+                            <thead>
+                                <tr>
+                                    <th>Question</th>
+                                    <th>Difficulty</th>
+                                    <th>Confidence</th>
+                                    <th>Tags</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var cq in topicGroup.OrderByDescending(c => c.Confidence))
+                                {
+                                    <tr>
+                                        <td style="max-width: 320px;">@cq.Original.Question</td>
+                                        <td>
+                                            <StatusBadge Text="@cq.InferredDifficulty"
+                                                         Color="@GetDifficultyColor(cq.InferredDifficulty)" />
+                                        </td>
+                                        <td>
+                                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                <div style="width: 50px; height: 6px; background: var(--border-color); border-radius: 3px;">
+                                                    <div style="width: @($"{cq.Confidence:F0}%"); height: 100%;
+                                                                background: @(cq.Confidence >= 70 ? "var(--color-green)" : cq.Confidence >= 40 ? "var(--color-yellow)" : "var(--color-red)");
+                                                                border-radius: 3px;"></div>
+                                                </div>
+                                                <span>@($"{cq.Confidence:F0}%")</span>
+                                            </div>
+                                        </td>
+                                        <td class="truncate" style="max-width: 180px;">
+                                            @string.Join(", ", cq.InferredTags.Take(5))
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    @* Static Topic Bank with Filters *@
+    <div class="card" style="margin-bottom: 1rem;">
+        <h2 class="section-title">Static Topic Bank</h2>
         <div class="form-row">
             <div class="form-group">
                 <label>Filter by Difficulty</label>
@@ -169,13 +375,26 @@
 
 @code {
     private bool _loading = true;
+    private bool _classifying;
+    private bool _dbSearchPerformed;
+    private string? _error;
     private string _difficultyFilter = "";
     private string _searchText = "";
+    private string _dbCompanyFilter = "";
+    private string _dbRoleFilter = "";
 
     private List<TopicArea> _topics = [];
     private Dictionary<string, InterviewQuestionConfidence> _confidenceMap = [];
     private HashSet<string> _expandedTopics = [];
     private HashSet<string> _expandedAnswers = [];
+
+    // Classification engine results
+    private List<ClassifiedQuestion> _classifiedQuestions = [];
+
+    // InterviewQuestionDatabase results
+    private InterviewQuestionDatabase? _questionDb;
+    private QuestionDatabaseStats _dbStats = new();
+    private List<InterviewQuestion> _dbSearchResults = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -198,12 +417,92 @@
             }
             catch
             {
-                // Silently handle corrupted data
                 _confidenceMap = [];
             }
         }
 
+        // Load the interview question database (scraped questions)
+        try
+        {
+            var dbPath = System.IO.Path.Combine(DataDir.Path, "interview-questions.json");
+            _questionDb = new InterviewQuestionDatabase(dbPath);
+            _dbStats = _questionDb.GetStatistics();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load question database: {ex.Message}";
+        }
+
         _loading = false;
+    }
+
+    private void SearchDatabaseQuestions()
+    {
+        _dbSearchPerformed = true;
+        _dbSearchResults = [];
+
+        if (_questionDb is null) return;
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_dbCompanyFilter) && !string.IsNullOrWhiteSpace(_dbRoleFilter))
+            {
+                _dbSearchResults = _questionDb.GetQuestions(_dbCompanyFilter.Trim(), _dbRoleFilter.Trim());
+            }
+            else if (!string.IsNullOrWhiteSpace(_dbCompanyFilter))
+            {
+                _dbSearchResults = _questionDb.GetCompanyQuestions(_dbCompanyFilter.Trim());
+            }
+            else if (!string.IsNullOrWhiteSpace(_dbRoleFilter))
+            {
+                _dbSearchResults = _questionDb.GetRoleQuestions(_dbRoleFilter.Trim());
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Search failed: {ex.Message}";
+        }
+    }
+
+    private void ClassifyAllQuestions()
+    {
+        _classifying = true;
+        _classifiedQuestions = [];
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            // Convert static bank questions to ScrapedInterviewQuestion format for classification
+            var scrapedFormat = new List<ScrapedInterviewQuestion>();
+            foreach (var topic in _topics)
+            {
+                foreach (var q in topic.Questions)
+                {
+                    scrapedFormat.Add(new ScrapedInterviewQuestion
+                    {
+                        Id = $"{topic.Id}-{scrapedFormat.Count}",
+                        Question = q.Question,
+                        TopicArea = topic.Id,
+                        BestAnswer = q.ExpectedAnswer,
+                        Tags = q.Tags.ToList(),
+                        SeniorityContext = q.Difficulty,
+                        Source = "static-bank"
+                    });
+                }
+            }
+
+            // Use the QuestionClassifier engine to classify all questions
+            _classifiedQuestions = Classifier.ClassifyBatch(scrapedFormat);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Classification failed: {ex.Message}";
+        }
+        finally
+        {
+            _classifying = false;
+        }
     }
 
     private List<StaticInterviewQuestion> GetFilteredQuestions(TopicArea topic)
@@ -261,6 +560,15 @@
         "junior" => "green",
         "mid" => "yellow",
         "senior" => "red",
+        _ => "gray"
+    };
+
+    private static string GetDbDifficultyColor(DifficultyLevel difficulty) => difficulty switch
+    {
+        DifficultyLevel.Easy => "green",
+        DifficultyLevel.Medium => "yellow",
+        DifficultyLevel.Hard => "red",
+        DifficultyLevel.Expert => "red",
         _ => "gray"
     };
 }

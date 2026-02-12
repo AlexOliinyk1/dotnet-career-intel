@@ -59,9 +59,9 @@ public sealed class VacancyRepository(CareerIntelDbContext db)
         if (since.HasValue)
             query = query.Where(v => v.ScrapedDate >= since.Value);
 
-        // SQLite cannot ORDER BY DateTimeOffset — materialize then sort client-side
-        var results = await query.ToListAsync(ct);
-        return results.OrderByDescending(v => v.ScrapedDate).ToList();
+        return await query
+            .OrderByDescending(v => v.ScrapedDate)
+            .ToListAsync(ct);
     }
 
     /// <summary>
@@ -155,11 +155,10 @@ public sealed class VacancyRepository(CareerIntelDbContext db)
     {
         var cutoff = DateTimeOffset.UtcNow.AddDays(-daysBack);
 
-        // SQLite cannot ORDER BY DateTimeOffset — materialize then sort client-side
-        var results = await db.VacancyChanges
+        return await db.VacancyChanges
             .Where(c => c.DetectedDate >= cutoff)
+            .OrderByDescending(c => c.DetectedDate)
             .ToListAsync(ct);
-        return results.OrderByDescending(c => c.DetectedDate).ToList();
     }
 
     /// <summary>
@@ -185,5 +184,102 @@ public sealed class VacancyRepository(CareerIntelDbContext db)
             .OrderBy(g => g.Key)
             .Select(g => ((DateTimeOffset)new DateTimeOffset(g.Key, TimeSpan.Zero), g.Count()))
             .ToList();
+    }
+
+    /// <summary>
+    /// Retrieves a paginated slice of vacancies with server-side filtering.
+    /// Returns the items plus the total count for pagination UI.
+    /// </summary>
+    public async Task<(List<JobVacancy> Items, int TotalCount)> GetVacanciesPagedAsync(
+        int skip,
+        int take,
+        string? platform = null,
+        SeniorityLevel? minSeniority = null,
+        DateTimeOffset? since = null,
+        string? searchText = null,
+        EngagementType? engagementType = null,
+        bool excludeGeoRestricted = false,
+        CancellationToken ct = default)
+    {
+        var query = db.Vacancies.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(platform))
+            query = query.Where(v => v.SourcePlatform == platform);
+
+        if (minSeniority.HasValue)
+            query = query.Where(v => v.SeniorityLevel >= minSeniority.Value);
+
+        if (since.HasValue)
+            query = query.Where(v => v.ScrapedDate >= since.Value);
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var search = searchText.Trim();
+            query = query.Where(v =>
+                v.Title.Contains(search) ||
+                v.Company.Contains(search));
+        }
+
+        if (engagementType.HasValue)
+            query = query.Where(v => v.EngagementType == engagementType.Value);
+
+        // Geo-restriction filtering: load all matching IDs first, filter client-side, then paginate
+        // because GeoRestrictions is a JSON list that can't be filtered in SQL
+        if (excludeGeoRestricted)
+        {
+            var allMatching = await query
+                .OrderByDescending(v => v.ScrapedDate)
+                .ToListAsync(ct);
+
+            var filtered = allMatching.Where(v => v.GeoRestrictions.Count == 0).ToList();
+            var totalCount = filtered.Count;
+            var paged = filtered.Skip(skip).Take(take).ToList();
+            return (paged, totalCount);
+        }
+        else
+        {
+            var totalCount = await query.CountAsync(ct);
+            var paged = await query
+                .OrderByDescending(v => v.ScrapedDate)
+                .Skip(skip)
+                .Take(take)
+                .ToListAsync(ct);
+            return (paged, totalCount);
+        }
+    }
+
+    /// <summary>
+    /// Gets the total count of vacancies matching the given filters.
+    /// </summary>
+    public async Task<int> GetCountAsync(
+        string? platform = null,
+        SeniorityLevel? minSeniority = null,
+        DateTimeOffset? since = null,
+        CancellationToken ct = default)
+    {
+        var query = db.Vacancies.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(platform))
+            query = query.Where(v => v.SourcePlatform == platform);
+
+        if (minSeniority.HasValue)
+            query = query.Where(v => v.SeniorityLevel >= minSeniority.Value);
+
+        if (since.HasValue)
+            query = query.Where(v => v.ScrapedDate >= since.Value);
+
+        return await query.CountAsync(ct);
+    }
+
+    /// <summary>
+    /// Gets distinct platform names for filter dropdowns.
+    /// </summary>
+    public async Task<List<string>> GetPlatformsAsync(CancellationToken ct = default)
+    {
+        return await db.Vacancies
+            .Select(v => v.SourcePlatform)
+            .Distinct()
+            .OrderBy(p => p)
+            .ToListAsync(ct);
     }
 }
