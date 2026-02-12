@@ -13,6 +13,7 @@ COPY src/CareerIntel.Notifications/CareerIntel.Notifications.csproj src/CareerIn
 COPY src/CareerIntel.Cli/CareerIntel.Cli.csproj src/CareerIntel.Cli/
 COPY src/CareerIntel.Web/CareerIntel.Web.csproj src/CareerIntel.Web/
 COPY tests/CareerIntel.Tests/CareerIntel.Tests.csproj tests/CareerIntel.Tests/
+COPY tests/CareerIntel.Web.Tests/CareerIntel.Web.Tests.csproj tests/CareerIntel.Web.Tests/
 RUN dotnet restore dotnet-career-intel.sln
 
 # Stage 2: Build
@@ -33,14 +34,13 @@ ENV ASPNETCORE_URLS=http://+:5050
 
 EXPOSE 5050
 
-# Create non-root user and data directory
-RUN groupadd -r appuser && useradd -r -g appuser -m -u 1000 appuser \
-    && mkdir -p /app/data && chown -R appuser:appuser /app
+# Create data directory (use existing app user from base image)
+RUN mkdir -p /app/data && chown -R app:app /app
 VOLUME /app/data
 
-COPY --from=publish --chown=appuser:appuser /app/publish .
+COPY --from=publish --chown=app:app /app/publish .
 
-USER appuser
+USER app
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:5050/health || exit 1
